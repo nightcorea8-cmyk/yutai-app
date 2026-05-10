@@ -224,7 +224,36 @@ body {
 .badge-ok { background: #e8f0eb; color: #1e4d2b; }
 .badge-soon { background: var(--accent2-light); color: #8a5510; }
 .badge-expired { background: var(--danger-light); color: #922020; }
+.badge-high { background: #fceaea; color: #8b1a1a; }
+.badge-mid  { background: #faf0e2; color: #7a4d0a; }
+.badge-low  { background: #f0f0f0; color: #555; }
 .item-content { font-size: 12px; color: var(--text2); line-height: 1.5; }
+.item-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 6px;
+}
+.item-addedby {
+  font-size: 11px; color: var(--text3);
+  background: var(--surface2); border-radius: 99px;
+  padding: 1px 8px;
+}
+.item-edit-hint { font-size: 11px; color: var(--text3); }
+
+/* ===== SORT BAR ===== */
+.sort-bar {
+  display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.sort-btn {
+  padding: 5px 12px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border2); border-radius: 99px;
+  background: var(--surface); color: var(--text2);
+  cursor: pointer; font-family: inherit; transition: all .15s;
+  white-space: nowrap;
+}
+.sort-btn.active {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.sort-btn:hover:not(.active) { background: var(--surface2); }
 
 /* ===== LOADING ===== */
 .loading {
@@ -522,13 +551,13 @@ import {
 
 // ========= ここにFirebase設定を貼り付け =========
 const firebaseConfig = {
-  apiKey: "AIzaSyAiMVd7U6SHGIDEToJW4XwA1Y4LjR7WwOY",
-  authDomain: "yutai-app-a6412.firebaseapp.com",
-  projectId: "yutai-app-a6412",
-  storageBucket: "yutai-app-a6412.firebasestorage.app",
+  apiKey:            "AIzaSyAiMVd7U6SHGIDEToJW4XwA1Y4LjR7WwOY",
+  authDomain:        "yutai-app-a6412.firebaseapp.com",
+  projectId:         "yutai-app-a6412",
+  storageBucket:     "yutai-app-a6412.firebasestorage.app",
   messagingSenderId: "776672274292",
-  appId: "1:776672274292:web:4b3e76afcbcff0b73cee21",
-  measurementId: "G-23CQ7GX8P6"
+  appId:             "1:776672274292:web:4b3e76afcbcff0b73cee21",
+  measurementId:     "G-23CQ7GX8P6"
 };
 // =================================================
 
@@ -547,12 +576,13 @@ let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth() + 1;
 let pendingPhoto = null;
 let activeTab = "list";
+let editingId = null;
+let sortMode = "registered"; // "registered" | "expiry" | "priority"
 
 // ---- DOM refs ----
 const syncDot    = document.getElementById("sync-dot");
 const syncText   = document.getElementById("sync-text");
 const stockList  = document.getElementById("stock-list");
-const expList    = document.getElementById("exp-list");
 const calGrid    = document.getElementById("cal-grid");
 const calTitle   = document.getElementById("cal-title");
 const modal      = document.getElementById("modal");
@@ -564,7 +594,34 @@ const cardInputs = document.getElementById("card-inputs");
 const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
 const daysLeft = ds => Math.round((new Date(ds) - today()) / 86400000);
 
-const catLabels = { food:"食品・飲食", retail:"小売・サービス", transport:"交通・旅行", other:"その他" };
+const PRIORITY_ORDER = { high: 0, mid: 1, low: 2 };
+const PRIORITY_LABEL = { high: "優先度：高", mid: "優先度：中", low: "優先度：低" };
+const PRIORITY_BADGE = { high: "badge-high", mid: "badge-mid", low: "badge-low" };
+
+function sortedStocks() {
+  const arr = [...stocks];
+  if (sortMode === "expiry") {
+    arr.sort((a, b) => {
+      if (!a.expiry && !b.expiry) return 0;
+      if (!a.expiry) return 1;
+      if (!b.expiry) return -1;
+      return new Date(a.expiry) - new Date(b.expiry);
+    });
+  } else if (sortMode === "priority") {
+    arr.sort((a, b) => {
+      const pa = PRIORITY_ORDER[a.priority] ?? 1;
+      const pb = PRIORITY_ORDER[b.priority] ?? 1;
+      if (pa !== pb) return pa - pb;
+      // 同優先度は使用期限順
+      if (!a.expiry && !b.expiry) return 0;
+      if (!a.expiry) return 1;
+      if (!b.expiry) return -1;
+      return new Date(a.expiry) - new Date(b.expiry);
+    });
+  }
+  // "registered" はFirestoreからの順（createdAt desc）をそのまま使う
+  return arr;
+}
 
 function setSync(state) {
   syncDot.className = "sync-dot " + state;
@@ -592,30 +649,42 @@ function startListen() {
 }
 
 // ---- CRUD ----
-async function addStock() {
-  const name    = document.getElementById("f-name").value.trim();
-  const code    = document.getElementById("f-code").value.trim();
-  const content = document.getElementById("f-content").value.trim();
-  const month   = document.getElementById("f-month").value;
-  const expiry  = document.getElementById("f-expiry").value;
-  const cat     = document.getElementById("f-cat").value;
-  if (!name || !code) { alert("銘柄名と証券コードは必須です"); return; }
+async function saveStock() {
+  const name     = document.getElementById("f-name").value.trim();
+  const content  = document.getElementById("f-content").value.trim();
+  const expiry   = document.getElementById("f-expiry").value;
+  const priority = document.getElementById("f-priority").value;
+  const addedBy  = document.getElementById("f-addedby").value;
+  if (!name) { alert("銘柄名は必須です"); return; }
 
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
-  btn.textContent = "追加中…";
+  btn.textContent = editingId ? "保存中…" : "追加中…";
 
-  const data = { name, code, content, month, expiry, cat, photo: pendingPhoto, createdAt: IS_CONFIGURED ? serverTimestamp() : Date.now() };
-  if (IS_CONFIGURED) {
-    setSync("syncing");
-    await addDoc(stocksRef, data);
+  if (editingId) {
+    const existing = stocks.find(s => s.id === editingId);
+    const photo = pendingPhoto !== undefined ? pendingPhoto : (existing ? existing.photo : null);
+    const data = { name, content, expiry, priority, addedBy, photo };
+    if (IS_CONFIGURED) {
+      setSync("syncing");
+      await updateDoc(doc(db, "stocks", editingId), data);
+    } else {
+      const s = stocks.find(x => x.id === editingId);
+      if (s) Object.assign(s, data);
+      renderAll();
+    }
   } else {
-    stocks.unshift({ id: Date.now().toString(), ...data });
-    renderAll();
+    const data = { name, content, expiry, priority, addedBy, photo: pendingPhoto, createdAt: IS_CONFIGURED ? serverTimestamp() : Date.now() };
+    if (IS_CONFIGURED) {
+      setSync("syncing");
+      await addDoc(stocksRef, data);
+    } else {
+      stocks.unshift({ id: Date.now().toString(), ...data });
+      renderAll();
+    }
   }
   closeModal();
   btn.disabled = false;
-  btn.textContent = "追加する";
 }
 
 async function deleteStock(id) {
@@ -643,20 +712,24 @@ async function updatePhoto(id, dataUrl) {
 function renderAll() {
   if (activeTab === "list")     renderList();
   if (activeTab === "calendar") renderCalendar();
-  if (activeTab === "expiry")   renderExpiry();
   updateStats();
 }
 
 function updateStats() {
-  const tm = new Date().getMonth() + 1;
   document.getElementById("stat-count").textContent = stocks.length;
-  document.getElementById("stat-thismonth").textContent = stocks.filter(s => parseInt(s.month) === tm).length;
   document.getElementById("stat-expiring").textContent = stocks.filter(s => s.expiry && daysLeft(s.expiry) >= 0 && daysLeft(s.expiry) <= 30).length;
+  document.getElementById("stat-high").textContent = stocks.filter(s => s.priority === "high").length;
 }
 
 function renderList() {
   updateStats();
-  if (stocks.length === 0) {
+  // sync sort buttons
+  document.querySelectorAll(".sort-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.sort === sortMode);
+  });
+
+  const list = sortedStocks();
+  if (list.length === 0) {
     stockList.innerHTML = `<div class="empty-state">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M9 12h6"/></svg>
       <p>まだ銘柄が登録されていません。<br>「銘柄を追加」から登録してください。</p>
@@ -664,21 +737,18 @@ function renderList() {
     cardInputs.innerHTML = "";
     return;
   }
-  cardInputs.innerHTML = stocks.map(s => `<input type="file" accept="image/*" id="ci-${s.id}" class="file-input" />`).join("");
-  stocks.forEach(s => {
+
+  cardInputs.innerHTML = list.map(s => `<input type="file" accept="image/*" id="ci-${s.id}" class="file-input" />`).join("");
+  list.forEach(s => {
     const inp = document.getElementById("ci-" + s.id);
     if (inp) inp.addEventListener("change", async e => {
       const f = e.target.files[0]; if (!f) return;
-      try {
-        const dataUrl = await compressImage(f);
-        updatePhoto(s.id, dataUrl);
-      } catch {
-        alert("画像の読み込みに失敗しました。別の画像をお試しください。");
-      }
+      try { updatePhoto(s.id, await compressImage(f)); }
+      catch { alert("画像の読み込みに失敗しました。別の画像をお試しください。"); }
     });
   });
 
-  stockList.innerHTML = stocks.map(s => {
+  stockList.innerHTML = list.map(s => {
     const dl = s.expiry ? daysLeft(s.expiry) : null;
     let expiryBadge = "";
     if (dl !== null) {
@@ -686,40 +756,38 @@ function renderList() {
       const txt = dl < 0 ? "期限切れ" : dl === 0 ? "本日まで" : `残${dl}日`;
       expiryBadge = `<span class="badge ${cls}">${txt}</span>`;
     }
+    const priBadge = s.priority ? `<span class="badge ${PRIORITY_BADGE[s.priority]}">${PRIORITY_LABEL[s.priority]}</span>` : "";
+    const addedByTxt = s.addedBy ? `<span class="item-addedby">${s.addedBy}</span>` : "";
     const photoArea = s.photo
-      ? `<div class="item-photo" data-view="${s.id}" title="写真を拡大">
-           <img src="${s.photo}" alt="優待券写真" />
-         </div>`
-      : `<div class="item-photo" data-upload="${s.id}" title="写真を追加">
+      ? `<div class="item-photo" data-view="${s.id}"><img src="${s.photo}" alt="優待券写真" /></div>`
+      : `<div class="item-photo" data-upload="${s.id}">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
            <span class="item-photo-label">追加</span>
          </div>`;
     return `<div class="item-card">
       ${photoArea}
-      <div class="item-body">
+      <div class="item-body" data-edit="${s.id}" style="cursor:pointer">
         <div class="item-top">
-          <div><div class="item-name">${s.name}</div><div class="item-code">${s.code}</div></div>
+          <div class="item-name">${s.name}</div>
           <button class="delete-btn" data-del="${s.id}" aria-label="削除">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
           </button>
         </div>
         <div class="badges">
-          <span class="badge badge-cat">${catLabels[s.cat] || s.cat}</span>
-          ${s.month ? `<span class="badge badge-month">確定 ${s.month}</span>` : ""}
-          ${expiryBadge}
+          ${priBadge}${expiryBadge}
         </div>
         <div class="item-content">${s.content || ""}</div>
+        <div class="item-footer">${addedByTxt}<span class="item-edit-hint">タップして編集 ›</span></div>
       </div>
     </div>`;
   }).join("");
 
-  // attach events via delegation
-  stockList.querySelectorAll("[data-del]").forEach(el => {
-    el.addEventListener("click", () => deleteStock(el.dataset.del));
-  });
-  stockList.querySelectorAll("[data-upload]").forEach(el => {
-    el.addEventListener("click", () => document.getElementById("ci-" + el.dataset.upload)?.click());
-  });
+  stockList.querySelectorAll("[data-del]").forEach(el =>
+    el.addEventListener("click", e => { e.stopPropagation(); deleteStock(el.dataset.del); }));
+  stockList.querySelectorAll("[data-edit]").forEach(el =>
+    el.addEventListener("click", () => openEditModal(el.dataset.edit)));
+  stockList.querySelectorAll("[data-upload]").forEach(el =>
+    el.addEventListener("click", () => document.getElementById("ci-" + el.dataset.upload)?.click()));
   stockList.querySelectorAll("[data-view]").forEach(el => {
     const s = stocks.find(x => x.id === el.dataset.view);
     if (s?.photo) el.addEventListener("click", () => openPhotoViewer(s.photo));
@@ -737,46 +805,19 @@ function renderCalendar() {
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell empty"></div>`;
   for (let d = 1; d <= lastDay; d++) {
     const isToday = d === tdd && calMonth === tdm && calYear === tdy;
-    const rights = stocks.filter(s => parseInt(s.month) === calMonth && d === 28)
-      .map(s => `<div class="cal-event">${s.name}</div>`).join("");
     const deadlines = stocks.filter(s => {
       if (!s.expiry) return false;
       const ed = new Date(s.expiry);
       return ed.getFullYear() === calYear && ed.getMonth() + 1 === calMonth && ed.getDate() === d;
     }).map(s => `<div class="cal-event deadline">${s.name}</div>`).join("");
     html += `<div class="cal-cell${isToday ? " today" : ""}">
-      <div class="cal-date">${d}</div>${rights}${deadlines}</div>`;
+      <div class="cal-date">${d}</div>${deadlines}</div>`;
   }
   calGrid.innerHTML = html;
 }
 
-function renderExpiry() {
-  const withExp = stocks.filter(s => s.expiry).map(s => ({ ...s, dl: daysLeft(s.expiry) })).sort((a,b) => a.dl - b.dl);
-  if (withExp.length === 0) {
-    expList.innerHTML = `<div class="empty-state"><p>使用期限が設定された銘柄はありません。</p></div>`;
-    return;
-  }
-  expList.innerHTML = withExp.map(s => {
-    const pct   = Math.max(0, Math.min(100, Math.round(s.dl / 180 * 100)));
-    const cls   = s.dl < 0 ? "urgent" : s.dl <= 30 ? "soon" : "ok";
-    const txt   = s.dl < 0 ? `${Math.abs(s.dl)}日超過` : s.dl === 0 ? "本日まで" : `残${s.dl}日`;
-    const color = s.dl < 0 ? "#b83232" : s.dl <= 30 ? "#c47c2b" : "#2d5f3f";
-    const thumb = s.photo
-      ? `<div class="exp-thumb"><img src="${s.photo}" alt="" /></div>`
-      : `<div class="exp-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
-    return `<div class="exp-item">${thumb}
-      <div class="exp-main">
-        <div class="exp-name">${s.name}</div>
-        <div class="exp-sub">${s.content || ""}</div>
-      </div>
-      <div class="exp-right">
-        <div class="days-left ${cls}">${txt}</div>
-        <div class="exp-date">${s.expiry}</div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
-      </div>
-    </div>`;
-  }).join("");
-}
+// ---- sort ----
+window.setSort = (mode) => { sortMode = mode; renderList(); };
 
 // ---- tab switching ----
 window.switchTab = (t, btn) => {
@@ -786,7 +827,6 @@ window.switchTab = (t, btn) => {
   document.getElementById("tab-" + t).classList.add("active");
   btn.classList.add("active");
   if (t === "calendar") renderCalendar();
-  if (t === "expiry")   renderExpiry();
   if (t === "list")     renderList();
 };
 
@@ -795,17 +835,53 @@ window.prevMonth = () => { calMonth--; if (calMonth < 1) { calMonth = 12; calYea
 window.nextMonth = () => { calMonth++; if (calMonth > 12) { calMonth = 1; calYear++; } renderCalendar(); };
 
 // ---- modal ----
+const PLACEHOLDER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>優待券の写真を追加（任意）`;
+
+function resetModalPhoto(existingPhotoUrl) {
+  pendingPhoto = undefined;
+  if (existingPhotoUrl) {
+    previewImg.src = existingPhotoUrl; previewImg.style.display = "block";
+    uploadPlaceholder.style.display = "none";
+  } else {
+    previewImg.src = ""; previewImg.style.display = "none";
+    uploadPlaceholder.innerHTML = PLACEHOLDER_SVG;
+    uploadPlaceholder.style.display = "flex";
+  }
+}
+
 window.openModal = () => {
-  pendingPhoto = null;
-  previewImg.src = ""; previewImg.style.display = "none";
-  uploadPlaceholder.style.display = "flex";
+  editingId = null;
+  document.getElementById("modal-title-text").textContent = "銘柄を追加";
+  document.getElementById("submit-btn").textContent = "追加する";
   document.getElementById("f-photo-input").value = "";
-  ["f-name","f-code","f-content","f-expiry"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("f-month").value = "";
+  document.getElementById("f-name").value = "";
+  document.getElementById("f-content").value = "";
+  document.getElementById("f-expiry").value = "";
+  document.getElementById("f-priority").value = "mid";
+  document.getElementById("f-addedby").value = "ひゅうご";
+  resetModalPhoto(null);
+  pendingPhoto = null;
   modal.classList.add("open");
 };
+
+window.openEditModal = (id) => {
+  const s = stocks.find(x => x.id === id);
+  if (!s) return;
+  editingId = id;
+  document.getElementById("modal-title-text").textContent = "銘柄を編集";
+  document.getElementById("submit-btn").textContent = "保存する";
+  document.getElementById("f-photo-input").value = "";
+  document.getElementById("f-name").value     = s.name || "";
+  document.getElementById("f-content").value  = s.content || "";
+  document.getElementById("f-expiry").value   = s.expiry || "";
+  document.getElementById("f-priority").value = s.priority || "mid";
+  document.getElementById("f-addedby").value  = s.addedBy || "ひゅうご";
+  resetModalPhoto(s.photo);
+  modal.classList.add("open");
+};
+
 window.closeModal = () => modal.classList.remove("open");
-window.addStock = addStock;
+window.saveStock = saveStock;
 
 // ---- 画像リサイズ・圧縮（Firestore 1MB制限対策） ----
 function compressImage(file, maxPx = 800, quality = 0.72) {
@@ -843,7 +919,7 @@ document.getElementById("f-photo-input").addEventListener("change", async e => {
     uploadPlaceholder.style.display = "none";
   } catch {
     alert("画像の読み込みに失敗しました。別の画像をお試しください。");
-    uploadPlaceholder.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>優待券の写真を追加（任意）`;
+    uploadPlaceholder.innerHTML = PLACEHOLDER_SVG;
   }
 });
 
@@ -877,7 +953,6 @@ startListen();
 <nav class="tabs">
   <button class="tab active" onclick="switchTab('list',this)">銘柄一覧</button>
   <button class="tab" onclick="switchTab('calendar',this)">カレンダー</button>
-  <button class="tab" onclick="switchTab('expiry',this)">使用期限</button>
 </nav>
 
 <main class="content">
@@ -891,8 +966,13 @@ startListen();
     </div>
     <div class="stats">
       <div class="stat"><div class="stat-label">保有銘柄</div><div class="stat-val" id="stat-count">-</div></div>
-      <div class="stat"><div class="stat-label">今月確定</div><div class="stat-val" id="stat-thismonth">-</div></div>
       <div class="stat"><div class="stat-label">期限間近</div><div class="stat-val" id="stat-expiring">-</div></div>
+      <div class="stat"><div class="stat-label">優先度：高</div><div class="stat-val" id="stat-high">-</div></div>
+    </div>
+    <div class="sort-bar">
+      <button class="sort-btn active" data-sort="registered" onclick="setSort('registered')">登録順</button>
+      <button class="sort-btn" data-sort="expiry" onclick="setSort('expiry')">使用期限順</button>
+      <button class="sort-btn" data-sort="priority" onclick="setSort('priority')">優先度順</button>
     </div>
     <button class="add-btn" onclick="openModal()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -924,20 +1004,13 @@ startListen();
     <div class="cal-grid" id="cal-grid"></div>
   </div>
 
-  <!-- EXPIRY -->
-  <div class="section" id="tab-expiry">
-    <div class="exp-list" id="exp-list">
-      <div class="loading"><div class="spinner"></div>読み込み中…</div>
-    </div>
-  </div>
 
-</main>
 
 <!-- ADD MODAL -->
 <div class="modal-wrap" id="modal">
   <div class="modal">
     <div class="modal-title">
-      銘柄を追加
+      <span id="modal-title-text">銘柄を追加</span>
       <button class="modal-close" onclick="closeModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -951,28 +1024,24 @@ startListen();
     </div>
     <input type="file" accept="image/*" id="f-photo-input" class="file-input" />
     <div class="form-row"><label>銘柄名 *</label><input id="f-name" placeholder="例：イオン" /></div>
-    <div class="form-row"><label>証券コード *</label><input id="f-code" placeholder="例：8267" /></div>
     <div class="form-row"><label>優待内容</label><textarea id="f-content" placeholder="例：お買い物割引券3,000円分"></textarea></div>
-    <div class="form-row"><label>権利確定月</label>
-      <select id="f-month">
-        <option value="">選択してください</option>
-        <option>1月</option><option>2月</option><option>3月</option><option>4月</option>
-        <option>5月</option><option>6月</option><option>7月</option><option>8月</option>
-        <option>9月</option><option>10月</option><option>11月</option><option>12月</option>
+    <div class="form-row"><label>使用期限</label><input id="f-expiry" type="date" /></div>
+    <div class="form-row"><label>優先度</label>
+      <select id="f-priority">
+        <option value="high">高</option>
+        <option value="mid" selected>中</option>
+        <option value="low">低</option>
       </select>
     </div>
-    <div class="form-row"><label>使用期限</label><input id="f-expiry" type="date" /></div>
-    <div class="form-row"><label>カテゴリ</label>
-      <select id="f-cat">
-        <option value="food">食品・飲食</option>
-        <option value="retail">小売・サービス</option>
-        <option value="transport">交通・旅行</option>
-        <option value="other">その他</option>
+    <div class="form-row"><label>追加者</label>
+      <select id="f-addedby">
+        <option value="ひゅうご">ひゅうご</option>
+        <option value="なる">なる</option>
       </select>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
-      <button class="btn-primary" id="submit-btn" onclick="addStock()">追加する</button>
+      <button class="btn-primary" id="submit-btn" onclick="saveStock()">追加する</button>
     </div>
   </div>
 </div>
