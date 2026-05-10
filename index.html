@@ -667,11 +667,14 @@ function renderList() {
   cardInputs.innerHTML = stocks.map(s => `<input type="file" accept="image/*" id="ci-${s.id}" class="file-input" />`).join("");
   stocks.forEach(s => {
     const inp = document.getElementById("ci-" + s.id);
-    if (inp) inp.addEventListener("change", e => {
+    if (inp) inp.addEventListener("change", async e => {
       const f = e.target.files[0]; if (!f) return;
-      const r = new FileReader();
-      r.onload = ev => updatePhoto(s.id, ev.target.result);
-      r.readAsDataURL(f);
+      try {
+        const dataUrl = await compressImage(f);
+        updatePhoto(s.id, dataUrl);
+      } catch {
+        alert("画像の読み込みに失敗しました。別の画像をお試しください。");
+      }
     });
   });
 
@@ -804,15 +807,44 @@ window.openModal = () => {
 window.closeModal = () => modal.classList.remove("open");
 window.addStock = addStock;
 
-document.getElementById("f-photo-input").addEventListener("change", e => {
+// ---- 画像リサイズ・圧縮（Firestore 1MB制限対策） ----
+function compressImage(file, maxPx = 800, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = reject;
+    r.onload = ev => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { width: w, height: h } = img;
+        if (w > maxPx || h > maxPx) {
+          if (w >= h) { h = Math.round(h * maxPx / w); w = maxPx; }
+          else        { w = Math.round(w * maxPx / h); h = maxPx; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        // iOSのEXIF回転を考慮してリセット描画
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = ev.target.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+document.getElementById("f-photo-input").addEventListener("change", async e => {
   const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    pendingPhoto = ev.target.result;
+  uploadPlaceholder.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>圧縮中…`;
+  try {
+    pendingPhoto = await compressImage(f);
     previewImg.src = pendingPhoto; previewImg.style.display = "block";
     uploadPlaceholder.style.display = "none";
-  };
-  r.readAsDataURL(f);
+  } catch {
+    alert("画像の読み込みに失敗しました。別の画像をお試しください。");
+    uploadPlaceholder.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>優待券の写真を追加（任意）`;
+  }
 });
 
 // ---- photo viewer ----
