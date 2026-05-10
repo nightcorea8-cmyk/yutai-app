@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>株主優待 管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --surface2: #f0efe9;
+  --border: rgba(0,0,0,0.1);
+  --border2: rgba(0,0,0,0.18);
+  --text: #1a1a18;
+  --text2: #6b6b64;
+  --text3: #a0a098;
+  --accent: #2d5f3f;
+  --accent-light: #e8f0eb;
+  --accent2: #c47c2b;
+  --accent2-light: #faf0e2;
+  --danger: #b83232;
+  --danger-light: #fbeaea;
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+html { font-size: 15px; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== HEADER ===== */
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+}
+.logo svg { width: 20px; height: 20px; }
+.sync-status {
+  font-size: 11px;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.sync-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+  transition: background .3s;
+}
+.sync-dot.connected { background: #4caf50; }
+.sync-dot.syncing { background: var(--accent2); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ===== TABS ===== */
+.tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 1;
+  min-width: 80px;
+  padding: 14px 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  text-align: center;
+  transition: all .15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ===== CONTENT ===== */
+.content { flex: 1; padding: 16px; max-width: 680px; width: 100%; margin: 0 auto; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* ===== STATS ===== */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.stat-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.stat-val { font-size: 24px; font-weight: 700; color: var(--text); line-height: 1; }
+
+/* ===== ADD BUTTON ===== */
+.add-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: 14px;
+  justify-content: center;
+  font-family: inherit;
+  transition: background .15s;
+}
+.add-btn:hover { background: #24502f; }
+.add-btn svg { width: 18px; height: 18px; }
+
+/* ===== STOCK CARDS ===== */
+.list { display: flex; flex-direction: column; gap: 8px; }
+.item-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+}
+.item-photo {
+  width: 88px;
+  min-height: 88px;
+  flex-shrink: 0;
+  background: var(--surface2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+.item-photo img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.item-photo-label {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+}
+.item-photo svg { color: var(--text3); position: relative; z-index: 1; }
+.item-photo:hover { background: #e8e7e1; }
+.item-body { flex: 1; padding: 12px 14px; min-width: 0; }
+.item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.item-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.item-code { font-size: 11px; color: var(--text2); margin-top: 1px; }
+.delete-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text3);
+  padding: 2px;
+  border-radius: 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.delete-btn:hover { color: var(--danger); }
+.delete-btn svg { width: 16px; height: 16px; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+.badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-weight: 500;
+}
+.badge-cat { background: var(--surface2); color: var(--text2); }
+.badge-month { background: #e8f0eb; color: #1e4d2b; }
+.badge-ok { background: #e8f0eb; color: #1e4d2b; }
+.badge-soon { background: var(--accent2-light); color: #8a5510; }
+.badge-expired { background: var(--danger-light); color: #922020; }
+.item-content { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+/* ===== LOADING ===== */
+.loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text2);
+  font-size: 13px;
+}
+.spinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text2);
+}
+.empty-state svg { width: 48px; height: 48px; color: var(--text3); margin-bottom: 12px; }
+.empty-state p { font-size: 13px; line-height: 1.7; }
+
+/* ===== CALENDAR ===== */
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cal-nav { display: flex; align-items: center; gap: 12px; }
+.cal-title { font-size: 15px; font-weight: 700; }
+.cal-nav-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 32px; height: 32px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text2);
+}
+.cal-nav-btn:hover { background: var(--surface2); }
+.cal-nav-btn svg { width: 16px; height: 16px; }
+.cal-legend {
+  display: flex; gap: 10px;
+  font-size: 11px; color: var(--text2);
+  align-items: center;
+}
+.cal-legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  margin-right: 3px;
+}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-day-label {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text2);
+  padding: 4px 0;
+  font-weight: 500;
+}
+.cal-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 5px;
+  min-height: 56px;
+  font-size: 11px;
+}
+.cal-cell.empty { background: transparent; border-color: transparent; }
+.cal-cell.today { border-color: var(--accent); background: var(--accent-light); }
+.cal-date { color: var(--text2); font-size: 11px; margin-bottom: 2px; font-weight: 500; }
+.cal-cell.today .cal-date { color: var(--accent); font-weight: 700; }
+.cal-event {
+  font-size: 9px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.cal-event.deadline { background: var(--accent2-light); color: var(--accent2); }
+
+/* ===== EXPIRY ===== */
+.exp-list { display: flex; flex-direction: column; gap: 8px; }
+.exp-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.exp-thumb {
+  width: 44px; height: 44px;
+  border-radius: 8px;
+  background: var(--surface2);
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.exp-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.exp-thumb svg { width: 20px; height: 20px; color: var(--text3); }
+.exp-main { flex: 1; min-width: 0; }
+.exp-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.exp-sub { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exp-right { text-align: right; flex-shrink: 0; }
+.days-left { font-size: 13px; font-weight: 700; }
+.days-left.ok { color: var(--accent); }
+.days-left.soon { color: var(--accent2); }
+.days-left.urgent { color: var(--danger); }
+.exp-date { font-size: 10px; color: var(--text3); margin-top: 2px; }
+.progress-bar {
+  width: 80px; height: 3px;
+  background: var(--surface2);
+  border-radius: 2px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+.progress-fill { height: 100%; border-radius: 2px; transition: width .4s; }
+
+/* ===== MODAL ===== */
+.modal-wrap {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+@media (min-width: 480px) {
+  .modal-wrap { align-items: center; padding: 20px; }
+  .modal { border-radius: var(--radius-lg) !important; max-height: 90vh !important; }
+}
+.modal-wrap.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 20px 20px 32px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-close {
+  background: var(--surface2);
+  border: none;
+  border-radius: 50%;
+  width: 30px; height: 30px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text2);
+}
+.modal-close svg { width: 16px; height: 16px; }
+.photo-upload-area {
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 14px;
+  background: var(--surface2);
+  position: relative;
+  overflow: hidden;
+  min-height: 80px;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+}
+.photo-upload-area img {
+  width: 100%; max-height: 160px;
+  object-fit: cover; border-radius: 6px;
+}
+.upload-placeholder { color: var(--text2); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.upload-placeholder svg { width: 28px; height: 28px; color: var(--text3); }
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; font-weight: 500; }
+.form-row input, .form-row select, .form-row textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  appearance: auto;
+}
+.form-row textarea { resize: vertical; min-height: 64px; }
+.form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.btn-primary {
+  flex: 1; padding: 12px;
+  font-size: 14px; font-weight: 700;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent); color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s;
+}
+.btn-primary:hover { background: #24502f; }
+.btn-primary:disabled { background: var(--text3); cursor: not-allowed; }
+.btn-cancel {
+  padding: 12px 20px;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ===== PHOTO VIEWER ===== */
+.photo-viewer {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.9);
+  z-index: 300;
+  align-items: center;
+  justify-content: center;
+}
+.photo-viewer.open { display: flex; }
+.photo-viewer img { max-width: 92vw; max-height: 84vh; border-radius: var(--radius); object-fit: contain; }
+.photo-viewer-close {
+  position: fixed; top: 16px; right: 16px;
+  background: rgba(255,255,255,.15);
+  border: none; color: #fff;
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+
+/* ===== CONFIG BANNER ===== */
+.config-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.config-banner strong { display: block; margin-bottom: 4px; color: #856404; }
+.config-banner code {
+  background: rgba(0,0,0,.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+.file-input { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ===== FIREBASE CONFIG ===== -->
+<!-- 
+  !! SETUP REQUIRED !!
+  1. Firebase Console (https://console.firebase.google.com) でプロジェクト作成
+  2. Firestore Database を有効化 (テストモードでOK)
+  3. プロジェクト設定 > ウェブアプリ追加 > 設定値をコピーして下記に貼り付け
+-->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, onSnapshot,
+  addDoc, deleteDoc, updateDoc, doc, serverTimestamp, query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ========= ここにFirebase設定を貼り付け =========
+<!-- 
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+-->
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAiMVd7U6SHGIDEToJW4XwA1Y4LjR7WwOY",
+  authDomain: "yutai-app-a6412.firebaseapp.com",
+  projectId: "yutai-app-a6412",
+  storageBucket: "yutai-app-a6412.firebasestorage.app",
+  messagingSenderId: "776672274292",
+  appId: "1:776672274292:web:4b3e76afcbcff0b73cee21",
+  measurementId: "G-23CQ7GX8P6"
+};
+// =================================================
+
+const IS_CONFIGURED = !firebaseConfig.apiKey.startsWith("YOUR");
+
+let db, stocksRef, unsubscribe;
+if (IS_CONFIGURED) {
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  stocksRef = collection(db, "stocks");
+}
+
+// ---- state ----
+let stocks = [];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;
+let pendingPhoto = null;
+let activeTab = "list";
+
+// ---- DOM refs ----
+const syncDot    = document.getElementById("sync-dot");
+const syncText   = document.getElementById("sync-text");
+const stockList  = document.getElementById("stock-list");
+const expList    = document.getElementById("exp-list");
+const calGrid    = document.getElementById("cal-grid");
+const calTitle   = document.getElementById("cal-title");
+const modal      = document.getElementById("modal");
+const previewImg = document.getElementById("preview-img");
+const uploadPlaceholder = document.getElementById("upload-placeholder");
+const cardInputs = document.getElementById("card-inputs");
+
+// ---- helpers ----
+const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
+const daysLeft = ds => Math.round((new Date(ds) - today()) / 86400000);
+
+const catLabels = { food:"食品・飲食", retail:"小売・サービス", transport:"交通・旅行", other:"その他" };
+
+function setSync(state) {
+  syncDot.className = "sync-dot " + state;
+  syncText.textContent = state === "connected" ? "同期中" : state === "syncing" ? "更新中…" : "未接続";
+}
+
+// ---- Firebase realtime listener ----
+function startListen() {
+  if (!IS_CONFIGURED) {
+    document.getElementById("config-banner").style.display = "block";
+    setSync("");
+    renderList();
+    return;
+  }
+  setSync("syncing");
+  const q = query(stocksRef, orderBy("createdAt", "desc"));
+  unsubscribe = onSnapshot(q, snap => {
+    stocks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    setSync("connected");
+    renderAll();
+  }, err => {
+    console.error(err);
+    setSync("");
+  });
+}
+
+// ---- CRUD ----
+async function addStock() {
+  const name    = document.getElementById("f-name").value.trim();
+  const code    = document.getElementById("f-code").value.trim();
+  const content = document.getElementById("f-content").value.trim();
+  const month   = document.getElementById("f-month").value;
+  const expiry  = document.getElementById("f-expiry").value;
+  const cat     = document.getElementById("f-cat").value;
+  if (!name || !code) { alert("銘柄名と証券コードは必須です"); return; }
+
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true;
+  btn.textContent = "追加中…";
+
+  const data = { name, code, content, month, expiry, cat, photo: pendingPhoto, createdAt: IS_CONFIGURED ? serverTimestamp() : Date.now() };
+  if (IS_CONFIGURED) {
+    setSync("syncing");
+    await addDoc(stocksRef, data);
+  } else {
+    stocks.unshift({ id: Date.now().toString(), ...data });
+    renderAll();
+  }
+  closeModal();
+  btn.disabled = false;
+  btn.textContent = "追加する";
+}
+
+async function deleteStock(id) {
+  if (!confirm("この銘柄を削除しますか？")) return;
+  if (IS_CONFIGURED) {
+    setSync("syncing");
+    await deleteDoc(doc(db, "stocks", id));
+  } else {
+    stocks = stocks.filter(s => s.id !== id);
+    renderAll();
+  }
+}
+
+async function updatePhoto(id, dataUrl) {
+  if (IS_CONFIGURED) {
+    setSync("syncing");
+    await updateDoc(doc(db, "stocks", id), { photo: dataUrl });
+  } else {
+    const s = stocks.find(x => x.id === id);
+    if (s) { s.photo = dataUrl; renderAll(); }
+  }
+}
+
+// ---- RENDER ----
+function renderAll() {
+  if (activeTab === "list")     renderList();
+  if (activeTab === "calendar") renderCalendar();
+  if (activeTab === "expiry")   renderExpiry();
+  updateStats();
+}
+
+function updateStats() {
+  const tm = new Date().getMonth() + 1;
+  document.getElementById("stat-count").textContent = stocks.length;
+  document.getElementById("stat-thismonth").textContent = stocks.filter(s => parseInt(s.month) === tm).length;
+  document.getElementById("stat-expiring").textContent = stocks.filter(s => s.expiry && daysLeft(s.expiry) >= 0 && daysLeft(s.expiry) <= 30).length;
+}
+
+function renderList() {
+  updateStats();
+  if (stocks.length === 0) {
+    stockList.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M9 12h6"/></svg>
+      <p>まだ銘柄が登録されていません。<br>「銘柄を追加」から登録してください。</p>
+    </div>`;
+    cardInputs.innerHTML = "";
+    return;
+  }
+  cardInputs.innerHTML = stocks.map(s => `<input type="file" accept="image/*" id="ci-${s.id}" class="file-input" />`).join("");
+  stocks.forEach(s => {
+    const inp = document.getElementById("ci-" + s.id);
+    if (inp) inp.addEventListener("change", e => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = ev => updatePhoto(s.id, ev.target.result);
+      r.readAsDataURL(f);
+    });
+  });
+
+  stockList.innerHTML = stocks.map(s => {
+    const dl = s.expiry ? daysLeft(s.expiry) : null;
+    let expiryBadge = "";
+    if (dl !== null) {
+      const cls = dl < 0 ? "badge-expired" : dl <= 30 ? "badge-soon" : "badge-ok";
+      const txt = dl < 0 ? "期限切れ" : dl === 0 ? "本日まで" : `残${dl}日`;
+      expiryBadge = `<span class="badge ${cls}">${txt}</span>`;
+    }
+    const photoArea = s.photo
+      ? `<div class="item-photo" data-view="${s.id}" title="写真を拡大">
+           <img src="${s.photo}" alt="優待券写真" />
+         </div>`
+      : `<div class="item-photo" data-upload="${s.id}" title="写真を追加">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+           <span class="item-photo-label">追加</span>
+         </div>`;
+    return `<div class="item-card">
+      ${photoArea}
+      <div class="item-body">
+        <div class="item-top">
+          <div><div class="item-name">${s.name}</div><div class="item-code">${s.code}</div></div>
+          <button class="delete-btn" data-del="${s.id}" aria-label="削除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+          </button>
+        </div>
+        <div class="badges">
+          <span class="badge badge-cat">${catLabels[s.cat] || s.cat}</span>
+          ${s.month ? `<span class="badge badge-month">確定 ${s.month}</span>` : ""}
+          ${expiryBadge}
+        </div>
+        <div class="item-content">${s.content || ""}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  // attach events via delegation
+  stockList.querySelectorAll("[data-del]").forEach(el => {
+    el.addEventListener("click", () => deleteStock(el.dataset.del));
+  });
+  stockList.querySelectorAll("[data-upload]").forEach(el => {
+    el.addEventListener("click", () => document.getElementById("ci-" + el.dataset.upload)?.click());
+  });
+  stockList.querySelectorAll("[data-view]").forEach(el => {
+    const s = stocks.find(x => x.id === el.dataset.view);
+    if (s?.photo) el.addEventListener("click", () => openPhotoViewer(s.photo));
+  });
+}
+
+function renderCalendar() {
+  const months = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+  calTitle.textContent = `${calYear}年 ${months[calMonth-1]}`;
+  const days = ["日","月","火","水","木","金","土"];
+  let html = days.map(d => `<div class="cal-day-label">${d}</div>`).join("");
+  const firstDow = new Date(calYear, calMonth - 1, 1).getDay();
+  const lastDay  = new Date(calYear, calMonth, 0).getDate();
+  const td = today(), tdd = td.getDate(), tdm = td.getMonth() + 1, tdy = td.getFullYear();
+  for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= lastDay; d++) {
+    const isToday = d === tdd && calMonth === tdm && calYear === tdy;
+    const rights = stocks.filter(s => parseInt(s.month) === calMonth && d === 28)
+      .map(s => `<div class="cal-event">${s.name}</div>`).join("");
+    const deadlines = stocks.filter(s => {
+      if (!s.expiry) return false;
+      const ed = new Date(s.expiry);
+      return ed.getFullYear() === calYear && ed.getMonth() + 1 === calMonth && ed.getDate() === d;
+    }).map(s => `<div class="cal-event deadline">${s.name}</div>`).join("");
+    html += `<div class="cal-cell${isToday ? " today" : ""}">
+      <div class="cal-date">${d}</div>${rights}${deadlines}</div>`;
+  }
+  calGrid.innerHTML = html;
+}
+
+function renderExpiry() {
+  const withExp = stocks.filter(s => s.expiry).map(s => ({ ...s, dl: daysLeft(s.expiry) })).sort((a,b) => a.dl - b.dl);
+  if (withExp.length === 0) {
+    expList.innerHTML = `<div class="empty-state"><p>使用期限が設定された銘柄はありません。</p></div>`;
+    return;
+  }
+  expList.innerHTML = withExp.map(s => {
+    const pct   = Math.max(0, Math.min(100, Math.round(s.dl / 180 * 100)));
+    const cls   = s.dl < 0 ? "urgent" : s.dl <= 30 ? "soon" : "ok";
+    const txt   = s.dl < 0 ? `${Math.abs(s.dl)}日超過` : s.dl === 0 ? "本日まで" : `残${s.dl}日`;
+    const color = s.dl < 0 ? "#b83232" : s.dl <= 30 ? "#c47c2b" : "#2d5f3f";
+    const thumb = s.photo
+      ? `<div class="exp-thumb"><img src="${s.photo}" alt="" /></div>`
+      : `<div class="exp-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
+    return `<div class="exp-item">${thumb}
+      <div class="exp-main">
+        <div class="exp-name">${s.name}</div>
+        <div class="exp-sub">${s.content || ""}</div>
+      </div>
+      <div class="exp-right">
+        <div class="days-left ${cls}">${txt}</div>
+        <div class="exp-date">${s.expiry}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ---- tab switching ----
+window.switchTab = (t, btn) => {
+  activeTab = t;
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + t).classList.add("active");
+  btn.classList.add("active");
+  if (t === "calendar") renderCalendar();
+  if (t === "expiry")   renderExpiry();
+  if (t === "list")     renderList();
+};
+
+// ---- calendar nav ----
+window.prevMonth = () => { calMonth--; if (calMonth < 1) { calMonth = 12; calYear--; } renderCalendar(); };
+window.nextMonth = () => { calMonth++; if (calMonth > 12) { calMonth = 1; calYear++; } renderCalendar(); };
+
+// ---- modal ----
+window.openModal = () => {
+  pendingPhoto = null;
+  previewImg.src = ""; previewImg.style.display = "none";
+  uploadPlaceholder.style.display = "flex";
+  document.getElementById("f-photo-input").value = "";
+  ["f-name","f-code","f-content","f-expiry"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("f-month").value = "";
+  modal.classList.add("open");
+};
+window.closeModal = () => modal.classList.remove("open");
+window.addStock = addStock;
+
+document.getElementById("f-photo-input").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    pendingPhoto = ev.target.result;
+    previewImg.src = pendingPhoto; previewImg.style.display = "block";
+    uploadPlaceholder.style.display = "none";
+  };
+  r.readAsDataURL(f);
+});
+
+// ---- photo viewer ----
+function openPhotoViewer(src) {
+  document.getElementById("photo-viewer-img").src = src;
+  document.getElementById("photo-viewer").classList.add("open");
+}
+window.closePhotoViewer = () => document.getElementById("photo-viewer").classList.remove("open");
+
+// ---- init ----
+startListen();
+</script>
+
+<!-- ===== HTML ===== -->
+<header class="header">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <path d="M8 21h8M12 17v4"/>
+      <path d="M7 8h10M7 11h7"/>
+    </svg>
+    株主優待 管理
+  </div>
+  <div class="sync-status">
+    <div class="sync-dot syncing" id="sync-dot"></div>
+    <span id="sync-text">接続中…</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" onclick="switchTab('list',this)">銘柄一覧</button>
+  <button class="tab" onclick="switchTab('calendar',this)">カレンダー</button>
+  <button class="tab" onclick="switchTab('expiry',this)">使用期限</button>
+</nav>
+
+<main class="content">
+
+  <!-- LIST -->
+  <div class="section active" id="tab-list">
+    <div class="config-banner" id="config-banner" style="display:none">
+      <strong>⚠ Firebase 未設定（デモモード）</strong>
+      <code>index.html</code> 内の <code>firebaseConfig</code> にプロジェクトの設定値を貼り付けてください。
+      設定後はデータがリアルタイムで全ユーザーと共有されます。
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">保有銘柄</div><div class="stat-val" id="stat-count">-</div></div>
+      <div class="stat"><div class="stat-label">今月確定</div><div class="stat-val" id="stat-thismonth">-</div></div>
+      <div class="stat"><div class="stat-label">期限間近</div><div class="stat-val" id="stat-expiring">-</div></div>
+    </div>
+    <button class="add-btn" onclick="openModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      銘柄を追加
+    </button>
+    <div class="list" id="stock-list">
+      <div class="loading"><div class="spinner"></div>読み込み中…</div>
+    </div>
+    <div id="card-inputs"></div>
+  </div>
+
+  <!-- CALENDAR -->
+  <div class="section" id="tab-calendar">
+    <div class="cal-header">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="prevMonth()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="cal-title" id="cal-title"></div>
+        <button class="cal-nav-btn" onclick="nextMonth()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      <div class="cal-legend">
+        <span><span class="cal-legend-dot" style="background:#e8f0eb;border:1px solid #2d5f3f"></span>権利確定</span>
+        <span><span class="cal-legend-dot" style="background:#faf0e2;border:1px solid #c47c2b"></span>期限</span>
+      </div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+
+  <!-- EXPIRY -->
+  <div class="section" id="tab-expiry">
+    <div class="exp-list" id="exp-list">
+      <div class="loading"><div class="spinner"></div>読み込み中…</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ADD MODAL -->
+<div class="modal-wrap" id="modal">
+  <div class="modal">
+    <div class="modal-title">
+      銘柄を追加
+      <button class="modal-close" onclick="closeModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="photo-upload-area" onclick="document.getElementById('f-photo-input').click()">
+      <div class="upload-placeholder" id="upload-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        優待券の写真を追加（任意）
+      </div>
+      <img id="preview-img" style="display:none" alt="プレビュー" />
+    </div>
+    <input type="file" accept="image/*" id="f-photo-input" class="file-input" />
+    <div class="form-row"><label>銘柄名 *</label><input id="f-name" placeholder="例：イオン" /></div>
+    <div class="form-row"><label>証券コード *</label><input id="f-code" placeholder="例：8267" /></div>
+    <div class="form-row"><label>優待内容</label><textarea id="f-content" placeholder="例：お買い物割引券3,000円分"></textarea></div>
+    <div class="form-row"><label>権利確定月</label>
+      <select id="f-month">
+        <option value="">選択してください</option>
+        <option>1月</option><option>2月</option><option>3月</option><option>4月</option>
+        <option>5月</option><option>6月</option><option>7月</option><option>8月</option>
+        <option>9月</option><option>10月</option><option>11月</option><option>12月</option>
+      </select>
+    </div>
+    <div class="form-row"><label>使用期限</label><input id="f-expiry" type="date" /></div>
+    <div class="form-row"><label>カテゴリ</label>
+      <select id="f-cat">
+        <option value="food">食品・飲食</option>
+        <option value="retail">小売・サービス</option>
+        <option value="transport">交通・旅行</option>
+        <option value="other">その他</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+      <button class="btn-primary" id="submit-btn" onclick="addStock()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- PHOTO VIEWER -->
+<div class="photo-viewer" id="photo-viewer" onclick="closePhotoViewer()">
+  <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
+  <img id="photo-viewer-img" src="" alt="優待券写真" />
+</div>
+
+</body>
+</html>
