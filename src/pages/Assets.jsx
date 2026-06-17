@@ -75,7 +75,7 @@ function parseRakutenSecuritiesCSV(text) {
       continue;
     }
     if (!inDetailSection) continue;
-    if (cols.some((c) => c.includes('参考為替'))) break;
+    if ((cols[0] || '').includes('参考為替')) break;
 
     if (!headerFound) {
       if (cols.some((c) => c.includes('種別') || c.includes('銘柄コード'))) {
