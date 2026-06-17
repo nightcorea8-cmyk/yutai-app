@@ -136,6 +136,7 @@ export default function Kakeibo() {
   const [csvRows, setCsvRows] = useState(null);
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvError, setCsvError] = useState('');
+  const [importToast, setImportToast] = useState(''); // success message
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -222,28 +223,30 @@ export default function Kakeibo() {
     if (toImport.length === 0) return;
     setCsvImporting(true);
     try {
-      await Promise.all(
-        toImport.map((r) =>
-          addDoc(collection(db, 'transactions'), {
-            type: 'expense',
-            amount: r.amount,
-            category: r.category,
-            description: r.merchant,
-            date: r.date,
-            addedBy: r.addedBy,
-            createdAt: serverTimestamp(),
-          })
-        )
-      );
+      // Sequential writes to avoid Firestore rate limits
+      for (const r of toImport) {
+        await addDoc(collection(db, 'transactions'), {
+          type: 'expense',
+          amount: r.amount,
+          category: r.category,
+          description: r.merchant,
+          date: r.date,
+          addedBy: r.addedBy,
+          createdAt: serverTimestamp(),
+        });
+      }
+      const importedMonth = toImport[0]?.date?.slice(0, 7) || viewMonth;
       setCsvRows(null);
-      if (toImport[0]?.date) setViewMonth(toImport[0].date.slice(0, 7));
+      setViewMonth(importedMonth);
+      setImportToast(`${toImport.length}件をインポートしました（${getMonthLabel(importedMonth)}）`);
+      setTimeout(() => setImportToast(''), 5000);
     } catch (err) {
-      console.error(err);
-      alert('インポートに失敗しました');
+      console.error('CSV import error:', err);
+      alert(`インポートに失敗しました\n\nエラー: ${err.message || err}`);
     } finally {
       setCsvImporting(false);
     }
-  }, [csvRows]);
+  }, [csvRows, viewMonth]);
 
   // Group by month
   const availableMonths = [...new Set(
@@ -268,6 +271,16 @@ export default function Kakeibo() {
 
   return (
     <div className="p-5 max-w-2xl mx-auto">
+      {/* Import success toast */}
+      {importToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#2d5f3f] text-white text-sm font-medium px-5 py-3 rounded-2xl shadow-lg flex items-center gap-2 whitespace-nowrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 flex-shrink-0">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          {importToast}
+        </div>
+      )}
+
       <div className="mb-5">
         <h1 className="text-lg font-bold text-gray-800">家計簿</h1>
       </div>
