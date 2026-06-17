@@ -90,8 +90,8 @@ function parseBankCSV(text) {
     const date = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
     const isExpense = amount < 0;
     const absAmount = Math.abs(amount);
-    // カード払いを検出（収支には入れるが内訳リンク対象）
-    const isCardPayment = /カ[ーｰ][ーｰ]?ト゛?|カード|CARD/i.test(description);
+    // カード払いを検出（ーｰ－−-など様々なダッシュ文字に対応）
+    const isCardPayment = /カ[ーｰ－−\-]ト゛?|カード|CARD/i.test(description);
 
     rows.push({
       date,
@@ -644,6 +644,8 @@ export default function Kakeibo() {
                     ? cardStatements.find((s) => s.id === t.cardStatementId)
                     : null;
                   const isExpanded = expandedTxId === t.id;
+                  // 口座の支出エントリはカード明細リンク対象（isCardPaymentに関わらず）
+                  const canLinkCard = t.source === 'bank' && t.type === 'expense';
 
                   return (
                     <div key={t.id}>
@@ -690,7 +692,7 @@ export default function Kakeibo() {
                           }`}>
                             {t.type === 'income' ? '+' : '-'}¥{formatJPY(t.amount)}
                           </span>
-                          {t.isCardPayment && (
+                          {canLinkCard && (
                             <button
                               onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
                               className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
@@ -698,7 +700,7 @@ export default function Kakeibo() {
                                   ? 'bg-[#c47c2b] text-white'
                                   : linkedStatement
                                     ? 'text-[#c47c2b] border border-[#c47c2b]/30'
-                                    : 'text-gray-300 border border-gray-200'
+                                    : 'text-gray-200 border border-gray-200'
                               }`}
                               aria-label="カード明細を展開"
                             >
@@ -719,7 +721,7 @@ export default function Kakeibo() {
                       </div>
 
                       {/* カード明細ドリルダウン */}
-                      {isExpanded && t.isCardPayment && (
+                      {isExpanded && canLinkCard && (
                         linkedStatement ? (
                           <div className="bg-[#fdf8f3] rounded-b-2xl border border-t-0 border-[#c47c2b]/20 overflow-hidden">
                             <div className="px-4 py-2 border-b border-[#c47c2b]/10 flex items-center justify-between">
