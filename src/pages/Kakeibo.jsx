@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../firebase.js';
 import {
   collection, onSnapshot, addDoc, deleteDoc, doc,
@@ -21,6 +21,107 @@ function todayStr() {
 function getMonthLabel(yyyymm) {
   const [y, m] = yyyymm.split('-');
   return `${y}年${parseInt(m, 10)}月`;
+}
+
+// Auto-categorize based on merchant name
+function guessCategoryFromMerchant(name) {
+  const n = name.toLowerCase();
+  if (/ｽ-ﾊﾟ|ｲｵﾝ|西友|ｾｲﾕ|ｺ-ｵﾌﾟ|ｺ-ﾌﾟ|ｵｵｻﾞﾑ|ﾗｲﾌ|食料|食材/.test(n)) return '食費';
+  if (/ﾏｸﾄﾞ|ｹﾝﾀｯｷ|ｽｶｲﾗ|ｻｲｾﾞﾘﾔ|ｸﾞﾙﾒ|ﾚｽﾄﾗﾝ|居酒屋|ﾗｰﾒﾝ|ｿﾊﾞ|ｽｼ|焼肉|ﾋﾟｻﾞ|外食|飲食/.test(n)) return '外食';
+  if (/ｺｰﾅﾝ|ﾆﾄﾘ|ﾀﾞｲｿ|ﾔﾏﾀﾞ|ﾋﾞﾚｯｼﾞ|ｶｲﾝｽﾞ|ﾐﾆｽﾄｯﾌﾟ|ﾛｰｿﾝ|ｾﾌﾞﾝ|ﾌｧﾐﾘ|薬|ﾔｸ|ﾏﾂﾓﾄｷﾖｼ|ｳﾞｨﾚｯｼﾞ/.test(n)) return '日用品';
+  if (/ｲﾃﾞﾐﾂ|ｴﾈｵｽ|ｺｽﾓ|ｼｪﾙ|ＥＴＣ|etc|ｵｰﾄﾊﾞｯｸｽ|ﾄﾖﾀ|ﾆｯｻﾝ|ﾎﾝﾀﾞ|電車|ﾊﾞｽ|駅|新幹線|高速|駐車/.test(n)) return '交通費';
+  if (/ﾈｯﾄﾌﾘｯｸｽ|netflix|youtube|ｱﾏｿﾞﾝ|amazon|ｸﾞｰｸﾞﾙ|google|ｽﾎﾟﾃｨ|spotify|ﾃﾞｨｽﾆ|disney|映画|ｶﾗｵｹ|遊園|ゲーム|ﾕｰﾁｭ/.test(n)) return '娯楽';
+  if (/病院|ｸﾘﾆｯｸ|薬局|ﾄﾞﾗｯｸﾞ|医院|歯科|ﾋﾞﾖｳｲﾝ|調剤/.test(n)) return '医療';
+  if (/学校|塾|ｽｸｰﾙ|教育|保育|幼稚|習い事|本|図書/.test(n)) return '教育';
+  if (/電力|ﾃﾞﾝﾘﾖｸ|ガス|ｶﾞｽ|水道|ｻｰﾋﾞｽ/.test(n) && !/ｸﾞｰｸﾞﾙ/.test(n)) return '光熱費';
+  if (/通信|ﾄﾞｺﾓ|au|ｿﾌﾄﾊﾞﾝｸ|ﾗｸﾃﾝ携帯|ｲﾝﾀｰﾈｯﾄ|wifi/.test(n)) return '通信費';
+  if (/ﾕﾆｸﾛ|ｼﾞｰﾕｰ|ｼﾞﾔﾊﾟﾝ|洋服|ﾌｧｯｼｮﾝ|ｱﾊﾟﾚﾙ|ｺｰﾄ|服/.test(n)) return '服飾';
+  if (/証券|投信|積立|ﾌｧﾝﾄﾞ|保険|ｲﾝｼｭｱﾗﾝｽ/.test(n)) return 'その他';
+  return 'その他';
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseCardCSV(text) {
+  const lines = text.split(/\r?\n/);
+  const rows = [];
+  let headerFound = false;
+  let colDate = 0, colName = 1, colUser = 2, colAmount = 4;
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cols = parseCSVLine(line);
+    // Detect header row
+    if (!headerFound) {
+      const idx = cols.findIndex((c) => c.includes('利用日'));
+      if (idx >= 0) {
+        headerFound = true;
+        colDate = cols.findIndex((c) => c.includes('利用日'));
+        colName = cols.findIndex((c) => c.includes('利用店名') || c.includes('商品名'));
+        colUser = cols.findIndex((c) => c.includes('利用者'));
+        colAmount = cols.findIndex((c) => c.includes('利用金額'));
+        if (colName < 0) colName = 1;
+        if (colUser < 0) colUser = 2;
+        if (colAmount < 0) colAmount = 4;
+        continue;
+      }
+      continue;
+    }
+
+    const rawDate = cols[colDate] || '';
+    const rawAmount = cols[colAmount] || '';
+    // Skip rows without valid date (YYYY/MM/DD) or amount
+    if (!/^\d{4}\/\d{2}\/\d{2}$/.test(rawDate)) continue;
+    const amount = parseInt(rawAmount.replace(/,/g, ''), 10);
+    if (!amount || amount <= 0) continue;
+
+    const date = rawDate.replace(/\//g, '-');
+    const merchant = cols[colName] || '';
+    const rawUser = cols[colUser] || '';
+    let addedBy = 'ひゅうご';
+    if (rawUser === '家族') addedBy = 'なる';
+
+    rows.push({
+      date,
+      merchant: merchant.trim(),
+      addedBy,
+      amount,
+      category: guessCategoryFromMerchant(merchant),
+      selected: true,
+    });
+  }
+  return rows;
+}
+
+async function readFileAsText(file) {
+  // Try Shift-JIS first (common for Japanese bank/card CSV), fallback to UTF-8
+  const buffer = await file.arrayBuffer();
+  const encodings = ['shift-jis', 'utf-8'];
+  for (const enc of encodings) {
+    try {
+      const decoder = new TextDecoder(enc);
+      const text = decoder.decode(buffer);
+      if (text.includes('利用日') || text.includes('利用金額')) return text;
+    } catch {}
+  }
+  return new TextDecoder('utf-8').decode(buffer);
 }
 
 export default function Kakeibo() {
@@ -46,6 +147,12 @@ export default function Kakeibo() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
+  // CSV import state
+  const [csvRows, setCsvRows] = useState(null); // null = not open
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvError, setCsvError] = useState('');
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
@@ -59,7 +166,6 @@ export default function Kakeibo() {
     localStorage.setItem('selectedUser', selectedUser);
   }, [selectedUser]);
 
-  // Reset category when type changes
   useEffect(() => {
     setCategory(txType === 'income' ? '給与' : '食費');
   }, [txType]);
@@ -98,21 +204,75 @@ export default function Kakeibo() {
     }
   }, []);
 
+  // CSV handlers
+  const handleFileSelect = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setCsvError('');
+    try {
+      const text = await readFileAsText(file);
+      const rows = parseCardCSV(text);
+      if (rows.length === 0) {
+        setCsvError('有効なデータが見つかりませんでした。カード明細のCSVファイルを選択してください。');
+        return;
+      }
+      setCsvRows(rows);
+    } catch (err) {
+      console.error(err);
+      setCsvError('ファイルの読み込みに失敗しました。');
+    }
+  }, []);
+
+  const toggleCsvRow = useCallback((idx) => {
+    setCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, selected: !r.selected } : r));
+  }, []);
+
+  const updateCsvCategory = useCallback((idx, cat) => {
+    setCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, category: cat } : r));
+  }, []);
+
+  const handleCsvImport = useCallback(async () => {
+    const toImport = csvRows.filter((r) => r.selected);
+    if (toImport.length === 0) return;
+    setCsvImporting(true);
+    try {
+      await Promise.all(
+        toImport.map((r) =>
+          addDoc(collection(db, 'transactions'), {
+            type: 'expense',
+            amount: r.amount,
+            category: r.category,
+            description: r.merchant,
+            date: r.date,
+            addedBy: r.addedBy,
+            createdAt: serverTimestamp(),
+          })
+        )
+      );
+      setCsvRows(null);
+      // Switch view to the month of the first imported row
+      if (toImport[0]?.date) {
+        setViewMonth(toImport[0].date.slice(0, 7));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('インポートに失敗しました');
+    } finally {
+      setCsvImporting(false);
+    }
+  }, [csvRows]);
+
   // Group by month
   const availableMonths = [...new Set(
     transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean)
   )].sort((a, b) => b.localeCompare(a));
-
-  if (!availableMonths.includes(viewMonth) && availableMonths.length > 0) {
-    // keep viewMonth as is (may be current month with no tx)
-  }
 
   const monthTx = transactions.filter((t) => t.date?.startsWith(viewMonth));
   const monthIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const monthExpense = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
   const monthBalance = monthIncome - monthExpense;
 
-  // Group by date within month
   const byDate = {};
   monthTx.forEach((t) => {
     const d = t.date || '未分類';
@@ -122,6 +282,7 @@ export default function Kakeibo() {
   const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
 
   const categories = txType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const selectedCount = csvRows ? csvRows.filter((r) => r.selected).length : 0;
 
   return (
     <div className="p-5 max-w-2xl mx-auto">
@@ -149,9 +310,30 @@ export default function Kakeibo() {
         </div>
       </div>
 
+      {/* CSV Import button */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        className="w-full py-3.5 bg-white border-2 border-dashed border-[#2d5f3f]/40 text-[#2d5f3f] rounded-xl font-semibold text-sm hover:bg-[#2d5f3f]/5 transition-colors mb-5 flex items-center justify-center gap-2"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+        </svg>
+        カード明細CSVをインポート
+      </button>
+      {csvError && (
+        <p className="text-xs text-[#b83232] text-center -mt-3 mb-4">{csvError}</p>
+      )}
+
       {/* Quick Add Form */}
       <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 mb-5">
-        <h2 className="text-sm font-bold text-gray-800 mb-4">収支を追加</h2>
+        <h2 className="text-sm font-bold text-gray-800 mb-4">手動で追加</h2>
         <form onSubmit={handleSubmit}>
           {/* Type toggle */}
           <div className="flex rounded-xl overflow-hidden border border-black/10 mb-4">
@@ -244,7 +426,6 @@ export default function Kakeibo() {
 
       {/* Month selector */}
       <div className="flex items-center gap-2 mb-3 overflow-x-auto scrollbar-none pb-1">
-        {/* Always include current month */}
         {[...new Set([viewMonth, ...availableMonths])].slice(0, 6).map((m) => (
           <button
             key={m}
@@ -353,6 +534,106 @@ export default function Kakeibo() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* CSV Preview Modal */}
+      {csvRows && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-[#f5f0eb]">
+          {/* Header */}
+          <div className="bg-white border-b border-black/5 px-5 py-4 flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={() => setCsvRows(null)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-black/10 text-gray-500"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path d="M19 12H5M12 5l-7 7 7 7" />
+              </svg>
+            </button>
+            <div className="flex-1">
+              <h2 className="text-sm font-bold text-gray-800">CSVインポート確認</h2>
+              <p className="text-xs text-gray-400">{csvRows.length}件のデータ · {selectedCount}件選択中</p>
+            </div>
+            <button
+              onClick={() => setCsvRows((rows) => rows.map((r) => ({ ...r, selected: true })))}
+              className="text-xs text-[#2d5f3f] font-medium px-3 py-1 rounded-lg border border-[#2d5f3f]/20"
+            >
+              全選択
+            </button>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+            {csvRows.map((row, idx) => (
+              <div
+                key={idx}
+                className={`bg-white rounded-2xl border px-4 py-3.5 transition-opacity ${
+                  row.selected ? 'border-black/5 shadow-sm' : 'border-black/5 opacity-40'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleCsvRow(idx)}
+                    className={`w-5 h-5 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-colors ${
+                      row.selected
+                        ? 'bg-[#2d5f3f] border-[#2d5f3f]'
+                        : 'border-gray-300 bg-white'
+                    }`}
+                  >
+                    {row.selected && (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="w-3 h-3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+
+                  <div className="flex-1 min-w-0">
+                    {/* Date + user + amount */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{row.date.replace(/-/g, '/')}</span>
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{row.addedBy}</span>
+                      </div>
+                      <span className="text-base font-bold text-[#b83232]">¥{formatJPY(row.amount)}</span>
+                    </div>
+
+                    {/* Merchant */}
+                    <p className="text-sm font-medium text-gray-700 truncate mb-2">{row.merchant}</p>
+
+                    {/* Category selector */}
+                    <select
+                      value={row.category}
+                      onChange={(e) => updateCsvCategory(idx, e.target.value)}
+                      disabled={!row.selected}
+                      className="w-full px-3 py-2 text-xs border border-black/10 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]"
+                    >
+                      {EXPENSE_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="bg-white border-t border-black/5 px-5 py-4 flex-shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-gray-500">インポート合計</span>
+              <span className="text-lg font-bold text-[#b83232]">
+                ¥{formatJPY(csvRows.filter((r) => r.selected).reduce((s, r) => s + r.amount, 0))}
+              </span>
+            </div>
+            <button
+              onClick={handleCsvImport}
+              disabled={csvImporting || selectedCount === 0}
+              className="w-full py-3.5 bg-[#2d5f3f] text-white rounded-xl font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#24502f] transition-colors"
+            >
+              {csvImporting ? 'インポート中…' : `${selectedCount}件をインポート`}
+            </button>
+          </div>
         </div>
       )}
     </div>
