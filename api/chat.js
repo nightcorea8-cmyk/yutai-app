@@ -1,5 +1,4 @@
-const GEMINI_MODEL = 'gemini-flash-latest';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_MODELS = ['gemini-2.0-flash-lite', 'gemini-1.5-flash-latest', 'gemini-flash-latest'];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -28,30 +27,30 @@ ${context ? `【ユーザーの現在の家計データ】\n${context}` : ''}`;
     parts: [{ text: m.content }],
   }));
 
-  try {
-    const response = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemInstruction }] },
-        contents,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error?.message || `HTTP ${response.status}`);
+  let lastError = '';
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemInstruction }] },
+          contents,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        lastError = data.error?.message || `HTTP ${response.status}`;
+        continue;
+      }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) { lastError = 'Empty response'; continue; }
+      return res.json({ content: text });
+    } catch (err) {
+      lastError = err.message;
     }
-
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini');
-
-    res.json({ content: text });
-  } catch (err) {
-    console.error('Gemini error:', err.message);
-    res.status(500).json({ error: err.message });
   }
+  console.error('All models failed:', lastError);
+  res.status(500).json({ error: lastError });
 }
