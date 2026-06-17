@@ -50,14 +50,18 @@ function parseCSVLine(line) {
 
 async function readFileAsText(file) {
   const buffer = await file.arrayBuffer();
-  // ひらがな・カタカナ・漢字・全角記号を含む広い範囲で日本語を検出
   const jpRe = /[　-鿿＀-￯]/;
+  // UTF-8を先に試す（fatal:trueで不正バイト列は即失敗）
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    if (jpRe.test(text)) return text;
+  } catch {}
+  // Shift-JISを試す（楽天銀行などの口座明細）
   try {
     const text = new TextDecoder('shift-jis').decode(buffer);
     if (jpRe.test(text)) return text;
   } catch {}
-  const utf8 = new TextDecoder('utf-8').decode(buffer);
-  return utf8;
+  return new TextDecoder('utf-8').decode(buffer);
 }
 
 // 口座明細パーサー: 取引日(YYYYMMDD), 入出金(円), 残高(円), 入出金内容
