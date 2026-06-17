@@ -10,18 +10,16 @@ function formatJPY(n) {
 }
 
 const ASSET_TYPES = [
-  { value: 'bank', label: '銀行', color: 'bg-blue-100 text-blue-700' },
-  { value: 'stock', label: '株式', color: 'bg-red-100 text-red-700' },
-  { value: 'fund', label: '投資信託', color: 'bg-purple-100 text-purple-700' },
-  { value: 'other', label: 'その他', color: 'bg-gray-100 text-gray-600' },
+  { value: 'bank', label: '銀行口座' },
+  { value: 'securities', label: '証券口座' },
 ];
 
 function typeLabel(type) {
-  return ASSET_TYPES.find((t) => t.value === type)?.label || 'その他';
+  return type === 'bank' ? '銀行口座' : '証券口座';
 }
 
 function typeColor(type) {
-  return ASSET_TYPES.find((t) => t.value === type)?.color || 'bg-gray-100 text-gray-600';
+  return type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700';
 }
 
 const EMPTY_FORM = { name: '', type: 'bank', amount: '', note: '' };
@@ -177,10 +175,50 @@ export default function Assets() {
 
   const totalAssets = assets.reduce((s, a) => s + (a.amount || 0), 0);
 
-  const byType = ASSET_TYPES.map(({ value, label }) => {
-    const sum = assets.filter((a) => a.type === value).reduce((s, a) => s + (a.amount || 0), 0);
-    return { type: value, label, sum };
-  }).filter((t) => t.sum > 0);
+  const byType = [
+    { type: 'bank', label: '銀行口座', color: 'bg-blue-100 text-blue-700', sum: assets.filter((a) => a.type === 'bank').reduce((s, a) => s + (a.amount || 0), 0) },
+    { type: 'securities', label: '証券口座', color: 'bg-purple-100 text-purple-700', sum: assets.filter((a) => a.type !== 'bank').reduce((s, a) => s + (a.amount || 0), 0) },
+  ].filter((t) => t.sum > 0);
+
+  const sortedAssets = assets.slice().sort((a, b) => {
+    const hasOA = a.order !== undefined && a.order !== null;
+    const hasOB = b.order !== undefined && b.order !== null;
+    if (hasOA && hasOB) return a.order - b.order;
+    if (hasOA) return -1;
+    if (hasOB) return 1;
+    return (b.amount || 0) - (a.amount || 0);
+  });
+
+  const handleMove = useCallback(async (assetId, direction) => {
+    const sorted = assets.slice().sort((a, b) => {
+      const hasOA = a.order !== undefined && a.order !== null;
+      const hasOB = b.order !== undefined && b.order !== null;
+      if (hasOA && hasOB) return a.order - b.order;
+      if (hasOA) return -1;
+      if (hasOB) return 1;
+      return (b.amount || 0) - (a.amount || 0);
+    });
+    const idx = sorted.findIndex((a) => a.id === assetId);
+    if (idx < 0) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= sorted.length) return;
+    const current = sorted[idx];
+    const target = sorted[targetIdx];
+    const needsInit = sorted.some((a) => a.order === undefined || a.order === null);
+    if (needsInit) {
+      await Promise.all(sorted.map((a, i) => {
+        let order = i;
+        if (a.id === current.id) order = targetIdx;
+        else if (a.id === target.id) order = idx;
+        return updateDoc(doc(db, 'assets', a.id), { order });
+      }));
+    } else {
+      await Promise.all([
+        updateDoc(doc(db, 'assets', current.id), { order: target.order }),
+        updateDoc(doc(db, 'assets', target.id), { order: current.order }),
+      ]);
+    }
+  }, [assets]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -194,9 +232,10 @@ export default function Assets() {
         });
         setEditingId(null);
       } else {
+        const maxOrder = sortedAssets.length > 0 ? (sortedAssets[sortedAssets.length - 1].order ?? sortedAssets.length - 1) + 1 : 0;
         await addDoc(collection(db, 'assets'), {
           name: form.name.trim(), type: form.type, amount: Number(form.amount),
-          note: form.note.trim(), updatedAt: serverTimestamp(),
+          note: form.note.trim(), order: maxOrder, updatedAt: serverTimestamp(),
         });
       }
       setForm(EMPTY_FORM);
@@ -207,11 +246,11 @@ export default function Assets() {
     } finally {
       setSubmitting(false);
     }
-  }, [form, editingId]);
+  }, [form, editingId, sortedAssets]);
 
   const startEdit = useCallback((asset) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', type: asset.type || 'bank', amount: String(asset.amount || ''), note: asset.note || '' });
+    setForm({ name: asset.name || '', type: asset.type === 'bank' ? 'bank' : 'securities', amount: String(asset.amount || ''), note: asset.note || '' });
     setShowForm(true);
   }, []);
 
@@ -272,12 +311,14 @@ export default function Assets() {
         });
       } else {
         portfolioId = `rakuten_${Date.now()}`;
+        const maxOrder = sortedAssets.length > 0 ? (sortedAssets[sortedAssets.length - 1].order ?? sortedAssets.length - 1) + 1 : 0;
         await addDoc(collection(db, 'assets'), {
           source: 'rakuten',
           portfolioId,
           name,
-          type: 'stock',
+          type: 'securities',
           amount: pendingTotalJPY,
+          order: maxOrder,
           updatedAt: serverTimestamp(),
         });
       }
@@ -295,7 +336,7 @@ export default function Assets() {
     } finally {
       setStockImporting(false);
     }
-  }, [accountName, assets, pendingItems, pendingTotalJPY]);
+  }, [accountName, assets, pendingItems, pendingTotalJPY, sortedAssets]);
 
   const toggleAssetExpand = useCallback((assetId) => {
     setExpandedAssetId((prev) => (prev === assetId ? null : assetId));
@@ -307,7 +348,6 @@ export default function Assets() {
   }, []);
 
   const existingRakutenNames = assets.filter((a) => a.source === 'rakuten').map((a) => a.name);
-  const sortedAssets = assets.slice().sort((a, b) => (b.amount || 0) - (a.amount || 0));
 
   return (
     <div className="p-5 max-w-2xl mx-auto">
@@ -322,12 +362,12 @@ export default function Assets() {
 
         {byType.length > 0 && (
           <div className="mt-4 space-y-2">
-            {byType.map(({ type, label, sum }) => {
+            {byType.map(({ type, label, color, sum }) => {
               const pct = totalAssets > 0 ? Math.round((sum / totalAssets) * 100) : 0;
               return (
                 <div key={type}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(type)}`}>{label}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${color}`}>{label}</span>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400">{pct}%</span>
                       <span className="text-sm font-medium text-gray-700">¥{formatJPY(sum)}</span>
@@ -487,7 +527,7 @@ export default function Assets() {
         </div>
       ) : (
         <div className="space-y-2">
-          {sortedAssets.map((asset) => {
+          {sortedAssets.map((asset, listIdx) => {
             const isRakuten = asset.source === 'rakuten';
             const isExpanded = expandedAssetId === asset.id;
             const portfolio = isRakuten && asset.portfolioId ? portfolios[asset.portfolioId] : null;
@@ -496,11 +536,37 @@ export default function Assets() {
                   .map((t) => ({ type: t, label: HOLDING_TYPE_LABEL[t] || t, items: (portfolio.items || []).filter((i) => i.type === t) }))
                   .filter((g) => g.items.length > 0)
               : [];
+            const isFirst = listIdx === 0;
+            const isLast = listIdx === sortedAssets.length - 1;
 
             return (
               <div key={asset.id} className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
                 {/* メイン行 */}
-                <div className="px-5 py-4 flex items-center gap-3">
+                <div className="px-3 py-4 flex items-center gap-2">
+                  {/* 並び替えボタン */}
+                  <div className="flex flex-col gap-0.5 flex-shrink-0">
+                    <button
+                      onClick={() => handleMove(asset.id, 'up')}
+                      disabled={isFirst}
+                      className="text-gray-300 hover:text-gray-500 disabled:opacity-20 transition-colors p-0.5"
+                      aria-label="上へ"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                        <polyline points="18 15 12 9 6 15" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleMove(asset.id, 'down')}
+                      disabled={isLast}
+                      className="text-gray-300 hover:text-gray-500 disabled:opacity-20 transition-colors p-0.5"
+                      aria-label="下へ"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                  </div>
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(asset.type)}`}>
@@ -513,8 +579,9 @@ export default function Assets() {
                     <p className="text-sm font-medium text-gray-800 truncate">{asset.name}</p>
                     {asset.note && <p className="text-xs text-gray-400 truncate">{asset.note}</p>}
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <span className="text-base font-bold text-gray-800">¥{formatJPY(asset.amount || 0)}</span>
+
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className="text-base font-bold text-gray-800 mr-1">¥{formatJPY(asset.amount || 0)}</span>
                     {isRakuten ? (
                       <>
                         <button
