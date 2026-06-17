@@ -3,7 +3,7 @@ import { db } from '../firebase.js';
 import { collection, onSnapshot } from 'firebase/firestore';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell,
+  ComposedChart, Line, PieChart, Pie, Cell,
 } from 'recharts';
 
 const PIE_COLORS = ['#2d5f3f', '#c47c2b', '#6b4aa0', '#3b82f6', '#b83232', '#0ea5e9', '#f59e0b', '#10b981'];
@@ -115,17 +115,18 @@ export default function Charts() {
   };
 
   const months = getLast6Months();
+  let cumulative = 0;
   const monthlyData = months.map((month) => {
     const monthTx = transactions.filter((t) => t.date?.startsWith(month));
     const income = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + getEffectiveAmount(t), 0);
     const expense = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + getEffectiveAmount(t), 0);
     const savings = income - expense;
+    cumulative += savings;
     const rate = income > 0 ? Math.round((savings / income) * 100) : null;
-    return { month: getMonthLabel(month), 収入: income, 支出: expense, 貯蓄率: rate };
+    return { month: getMonthLabel(month), 収入: income, 支出: expense, 貯蓄額: savings, 累計: cumulative, 貯蓄率: rate };
   });
 
   const hasMonthlyData = monthlyData.some((d) => d.収入 > 0 || d.支出 > 0);
-  const hasSavingsData = monthlyData.some((d) => d.貯蓄率 !== null);
 
   const totalAssets = assets.reduce((s, a) => s + (a.amount || 0), 0);
 
@@ -137,13 +138,17 @@ export default function Charts() {
     secSum > 0 && { name: '証券口座', value: secSum },
   ].filter(Boolean);
 
-  // 口座別（各資産エントリを個別に）
-  const accountPieData = assets
-    .filter((a) => (a.amount || 0) > 0)
-    .sort((a, b) => (b.amount || 0) - (a.amount || 0))
-    .map((a) => ({ name: a.name, value: a.amount || 0, type: a.type === 'bank' ? 'bank' : 'securities' }));
+  // タグ別（同じタグを合算）
+  const tagMap = {};
+  assets.filter((a) => (a.amount || 0) > 0).forEach((a) => {
+    const tag = (a.tag || '').trim() || '未分類';
+    tagMap[tag] = (tagMap[tag] || 0) + (a.amount || 0);
+  });
+  const tagPieData = Object.entries(tagMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
 
-  const activeAssetData = assetView === 'type' ? typePieData : accountPieData;
+  const activeAssetData = assetView === 'type' ? typePieData : tagPieData;
 
   // 証券ポートフォリオ内訳
   const allHoldings = Object.values(portfolios).flatMap((p) => p.items || []);
@@ -202,21 +207,40 @@ export default function Charts() {
         )}
       </div>
 
-      {/* 月別貯蓄率 */}
+      {/* 月別貯蓄額 */}
       <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 mb-4">
-        <h2 className="text-sm font-bold text-gray-800 mb-4">月別貯蓄率</h2>
-        {!hasSavingsData ? (
+        <h2 className="text-sm font-bold text-gray-800 mb-4">月別貯蓄額</h2>
+        {!hasMonthlyData ? (
           <p className="text-sm text-gray-400 text-center py-8">収支データがありません</p>
         ) : (
-          <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={36} domain={[0, 100]} />
-              <Tooltip formatter={(value) => [value !== null ? `${value}%` : 'データなし', '貯蓄率']} contentStyle={tooltipStyle} />
-              <Line type="monotone" dataKey="貯蓄率" stroke="#c47c2b" strokeWidth={2.5} dot={{ fill: '#c47c2b', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <>
+            <ResponsiveContainer width="100%" height={190}>
+              <ComposedChart data={monthlyData} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={formatMan} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={36} />
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === '貯蓄率') return [value !== null ? `${value}%` : 'ー', name];
+                    return [`¥${formatJPY(value)}`, name];
+                  }}
+                  contentStyle={tooltipStyle}
+                  cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                />
+                <Bar dataKey="貯蓄額" radius={[4, 4, 0, 0]} maxBarSize={36}>
+                  {monthlyData.map((entry, i) => (
+                    <Cell key={i} fill={entry.貯蓄額 >= 0 ? '#2d5f3f' : '#b83232'} />
+                  ))}
+                </Bar>
+                <Line type="monotone" dataKey="累計" stroke="#c47c2b" strokeWidth={2.5} dot={{ fill: '#c47c2b', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div className="flex items-center justify-center gap-5 mt-2">
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#2d5f3f]" /><span className="text-xs text-gray-500">貯蓄額</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#b83232]" /><span className="text-xs text-gray-500">赤字</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-3.5 h-0.5 bg-[#c47c2b] rounded" /><span className="text-xs text-gray-500">累計</span></div>
+            </div>
+          </>
         )}
       </div>
 
@@ -227,7 +251,7 @@ export default function Charts() {
           <SegmentControl
             value={assetView}
             onChange={setAssetView}
-            options={[{ value: 'type', label: '種類別' }, { value: 'account', label: '口座別' }]}
+            options={[{ value: 'type', label: '種類別' }, { value: 'tag', label: 'タグ別' }]}
           />
         </div>
         <p className="text-xs text-gray-400 mb-4">総額 ¥{formatJPY(totalAssets)}</p>

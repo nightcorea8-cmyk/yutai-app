@@ -7,7 +7,7 @@ import {
 
 const INCOME_CATEGORIES = ['給与', 'ボーナス', '振込', '副収入', 'その他'];
 const EXPENSE_CATEGORIES = ['食費', '外食', '日用品', '交通費', '娯楽', '医療', '教育', '住居', '光熱費', '通信費', '服飾', '保険', '税金', 'その他'];
-const USERS = ['本人', '家族'];
+const USERS = ['ひゅうご', 'なる'];
 const WEEK_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 function formatJPY(n) {
@@ -138,7 +138,7 @@ function parseCardCSV(text) {
     const date = `${dy}-${dm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
     const merchant = (cols[colName] || '').trim();
     const rawUser = cols[colUser] || '';
-    const addedBy = rawUser === '家族' ? '家族' : '本人';
+    const addedBy = rawUser === '家族' ? 'なる' : 'ひゅうご';
 
     rows.push({ date, merchant, addedBy, amount, category: 'その他', selected: true });
   }
@@ -159,7 +159,7 @@ export default function Kakeibo() {
   const [submitting, setSubmitting] = useState(false);
 
   const [selectedUser, setSelectedUser] = useState(
-    () => localStorage.getItem('selectedUser') || '本人'
+    () => localStorage.getItem('selectedUser') || 'ひゅうご'
   );
 
   const [viewMonth, setViewMonth] = useState(() => {

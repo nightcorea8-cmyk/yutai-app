@@ -29,7 +29,7 @@ function typeColor(type) {
   return type === 'bank' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700';
 }
 
-const EMPTY_FORM = { name: '', type: 'bank', amount: '', note: '' };
+const EMPTY_FORM = { name: '', type: 'bank', amount: '', note: '', tag: '' };
 
 function parseCSVLine(line) {
   const result = [];
@@ -162,6 +162,7 @@ export default function Assets() {
 
   const [expandedAssetId, setExpandedAssetId] = useState(null);
   const [expandedTypeKey, setExpandedTypeKey] = useState(null);
+  const formRef = useRef(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'assets'), (snap) => {
@@ -235,14 +236,14 @@ export default function Assets() {
       if (editingId) {
         await updateDoc(doc(db, 'assets', editingId), {
           name: form.name.trim(), type: form.type, amount: Number(form.amount),
-          note: form.note.trim(), updatedAt: serverTimestamp(),
+          note: form.note.trim(), tag: form.tag.trim(), updatedAt: serverTimestamp(),
         });
         setEditingId(null);
       } else {
         const maxOrder = sortedAssets.length > 0 ? (sortedAssets[sortedAssets.length - 1].order ?? sortedAssets.length - 1) + 1 : 0;
         await addDoc(collection(db, 'assets'), {
           name: form.name.trim(), type: form.type, amount: Number(form.amount),
-          note: form.note.trim(), order: maxOrder, createdAt: serverTimestamp(),
+          note: form.note.trim(), tag: form.tag.trim(), order: maxOrder, createdAt: serverTimestamp(),
         });
       }
       setForm(EMPTY_FORM);
@@ -257,8 +258,9 @@ export default function Assets() {
 
   const startEdit = useCallback((asset) => {
     setEditingId(asset.id);
-    setForm({ name: asset.name || '', type: asset.type === 'bank' ? 'bank' : 'securities', amount: String(asset.amount || ''), note: asset.note || '' });
+    setForm({ name: asset.name || '', type: asset.type === 'bank' ? 'bank' : 'securities', amount: String(asset.amount || ''), note: asset.note || '', tag: asset.tag || '' });
     setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }, []);
 
   const cancelEdit = useCallback(() => {
@@ -469,7 +471,7 @@ export default function Assets() {
 
       {/* 追加フォーム */}
       {showForm && (
-        <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-5 mt-3">
+        <div ref={formRef} className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-5 mt-3">
           <h2 className="text-sm font-bold text-gray-800 mb-3">{editingId ? '資産を編集' : '資産を追加'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
@@ -498,12 +500,21 @@ export default function Assets() {
                 </div>
               </div>
             </div>
-            <div className="mb-3">
-              <label className="block text-xs text-gray-500 mb-1 font-medium">メモ（任意）</label>
-              <input type="text" value={form.note}
-                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-                placeholder="例：普通口座"
-                className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]" />
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1 font-medium">タグ（任意）</label>
+                <input type="text" value={form.tag}
+                  onChange={(e) => setForm((f) => ({ ...f, tag: e.target.value }))}
+                  placeholder="例：夫婦共有"
+                  className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1 font-medium">メモ（任意）</label>
+                <input type="text" value={form.note}
+                  onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="例：普通口座"
+                  className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]" />
+              </div>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={cancelEdit}
@@ -581,6 +592,9 @@ export default function Assets() {
                       </span>
                       {isRakuten && (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[#ede9f5] text-[#6b4aa0]">楽天証券</span>
+                      )}
+                      {asset.tag && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">{asset.tag}</span>
                       )}
                     </div>
                     <p className="text-sm font-medium text-gray-800 truncate">{asset.name}</p>
