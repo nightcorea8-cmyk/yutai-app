@@ -54,7 +54,7 @@ function SegmentControl({ value, onChange, options }) {
   );
 }
 
-function DonutLegend({ data, total, showTypeBadge }) {
+function DonutLegend({ data, total }) {
   return (
     <div className="flex-1 space-y-2 min-w-0">
       {data.map((item, i) => {
@@ -64,11 +64,6 @@ function DonutLegend({ data, total, showTypeBadge }) {
             <div className="flex items-center gap-1.5 min-w-0">
               <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
               <span className="text-xs text-gray-600 truncate">{item.name}</span>
-              {showTypeBadge && item.type && (
-                <span className={`text-[10px] px-1.5 py-px rounded-full flex-shrink-0 font-medium leading-tight ${item.type === 'bank' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
-                  {item.type === 'bank' ? '銀行' : '証券'}
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <span className="text-[11px] text-gray-400">¥{formatJPY(item.value)}</span>
@@ -251,7 +246,7 @@ export default function Charts() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <DonutLegend data={activeAssetData} total={totalAssets} showTypeBadge={assetView === 'account'} />
+            <DonutLegend data={activeAssetData} total={totalAssets} />
           </div>
         )}
       </div>
