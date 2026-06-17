@@ -50,13 +50,14 @@ function parseCSVLine(line) {
 
 async function readFileAsText(file) {
   const buffer = await file.arrayBuffer();
-  for (const enc of ['shift-jis', 'cp932', 'utf-8']) {
-    try {
-      const text = new TextDecoder(enc).decode(buffer);
-      if (/[一-鿿＀-￯]/.test(text)) return text;
-    } catch {}
-  }
-  return new TextDecoder('utf-8').decode(buffer);
+  // ひらがな・カタカナ・漢字・全角記号を含む広い範囲で日本語を検出
+  const jpRe = /[　-鿿＀-￯]/;
+  try {
+    const text = new TextDecoder('shift-jis').decode(buffer);
+    if (jpRe.test(text)) return text;
+  } catch {}
+  const utf8 = new TextDecoder('utf-8').decode(buffer);
+  return utf8;
 }
 
 // 口座明細パーサー: 取引日(YYYYMMDD), 入出金(円), 残高(円), 入出金内容
@@ -129,11 +130,12 @@ function parseCardCSV(text) {
 
     const rawDate = cols[colDate] || '';
     const rawAmount = cols[colAmount] || '';
-    if (!/^\d{4}\/\d{2}\/\d{2}$/.test(rawDate)) continue;
+    if (!/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(rawDate)) continue;
     const amount = parseInt(rawAmount.replace(/,/g, ''), 10);
     if (!amount || amount <= 0) continue;
 
-    const date = rawDate.replace(/\//g, '-');
+    const [dy, dm, dd] = rawDate.split('/');
+    const date = `${dy}-${dm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
     const merchant = (cols[colName] || '').trim();
     const rawUser = cols[colUser] || '';
     const addedBy = rawUser === '家族' ? 'なる' : 'ひゅうご';
@@ -268,12 +270,19 @@ export default function Kakeibo() {
         setCsvError('有効なデータが見つかりません。口座明細のCSVを選択してください。');
         return;
       }
-      setBankCsvRows(rows);
+      // 重複チェック（同じ日付・金額・摘要がすでにある行はデフォルト非選択）
+      const marked = rows.map((r) => {
+        const dup = transactions.some(
+          (t) => t.source === 'bank' && t.date === r.date && t.amount === r.amount && t.description === r.description
+        );
+        return { ...r, isDuplicate: dup, selected: !dup };
+      });
+      setBankCsvRows(marked);
     } catch (err) {
       console.error(err);
       setCsvError('ファイルの読み込みに失敗しました。');
     }
-  }, []);
+  }, [transactions]);
 
   // 口座CSVインポート実行
   const handleBankImport = useCallback(async () => {
@@ -312,8 +321,9 @@ export default function Kakeibo() {
       setImportToast(`${toImport.length}件をインポートしました（${getMonthLabel(importedMonth)}）`);
       setTimeout(() => setImportToast(''), 5000);
     } catch (err) {
-      console.error(err);
-      alert(`インポートに失敗しました\n${err.message}`);
+      console.error('bank import error:', err);
+      setCsvError(`インポートに失敗しました: ${err.message}`);
+      setBankCsvRows(null);
     } finally {
       setCsvImporting(false);
     }
@@ -332,12 +342,19 @@ export default function Kakeibo() {
         setCsvError('有効なデータが見つかりません。カード明細のCSVを選択してください。');
         return;
       }
+      // 合計金額が一致する既存のカード明細があれば重複警告
+      const total = rows.reduce((s, r) => s + r.amount, 0);
+      const dup = cardStatements.some((s) => s.totalAmount === total);
+      if (dup) {
+        setCsvError(`この明細（合計 ¥${new Intl.NumberFormat('ja-JP').format(total)}）はすでにインポートされています。`);
+        return;
+      }
       setCardCsvRows(rows);
     } catch (err) {
       console.error(err);
       setCsvError('ファイルの読み込みに失敗しました。');
     }
-  }, []);
+  }, [cardStatements]);
 
   // カードCSVインポート実行（cardStatementsへ保存）
   const handleCardImport = useCallback(async () => {
@@ -376,8 +393,9 @@ export default function Kakeibo() {
       );
       setTimeout(() => setImportToast(''), 6000);
     } catch (err) {
-      console.error(err);
-      alert(`インポートに失敗しました\n${err.message}`);
+      console.error('card import error:', err);
+      setCsvError(`インポートに失敗しました: ${err.message}`);
+      setCardCsvRows(null);
     } finally {
       setCsvImporting(false);
     }
@@ -746,7 +764,12 @@ export default function Kakeibo() {
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs text-gray-400">{row.date.replace(/-/g, '/')}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{row.date.replace(/-/g, '/')}</span>
+                        {row.isDuplicate && (
+                          <span className="text-xs bg-orange-100 text-orange-500 px-1.5 py-0.5 rounded-full font-medium">重複</span>
+                        )}
+                      </div>
                       <span className={`text-base font-bold ${row.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
                         {row.type === 'income' ? '+' : '-'}¥{formatJPY(row.amount)}
                       </span>
