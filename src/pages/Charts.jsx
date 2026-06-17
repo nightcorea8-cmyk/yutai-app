@@ -123,7 +123,7 @@ export default function Charts() {
     const savings = income - expense;
     cumulative += savings;
     const rate = income > 0 ? Math.round((savings / income) * 100) : null;
-    return { month: getMonthLabel(month), 収入: income, 支出: expense, 貯蓄額: savings, 累計: cumulative, 貯蓄率: rate };
+    return { month: getMonthLabel(month), 収入: income, 支出: expense, 収支: income - expense, 貯蓄額: savings, 累計: cumulative, 貯蓄率: rate };
   });
 
   const hasMonthlyData = monthlyData.some((d) => d.収入 > 0 || d.支出 > 0);
@@ -190,18 +190,20 @@ export default function Charts() {
         ) : (
           <>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={monthlyData} barGap={2} barCategoryGap="30%">
+              <ComposedChart data={monthlyData} barGap={2} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={formatMan} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={36} />
                 <Tooltip formatter={(value, name) => [`¥${formatJPY(value)}`, name]} contentStyle={tooltipStyle} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
                 <Bar dataKey="収入" fill="#2d5f3f" radius={[4, 4, 0, 0]} maxBarSize={36} />
                 <Bar dataKey="支出" fill="#b83232" radius={[4, 4, 0, 0]} maxBarSize={36} />
-              </BarChart>
+                <Line type="monotone" dataKey="収支" stroke="#6b4aa0" strokeWidth={2.5} dot={{ fill: '#6b4aa0', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls />
+              </ComposedChart>
             </ResponsiveContainer>
             <div className="flex items-center justify-center gap-5 mt-2">
               <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#2d5f3f]" /><span className="text-xs text-gray-500">収入</span></div>
               <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-[#b83232]" /><span className="text-xs text-gray-500">支出</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-3.5 h-0.5 bg-[#6b4aa0] rounded" /><span className="text-xs text-gray-500">収支</span></div>
             </div>
           </>
         )}
