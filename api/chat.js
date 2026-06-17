@@ -1,4 +1,4 @@
-const GEMINI_MODELS = ['gemini-2.0-flash-lite', 'gemini-1.5-flash-latest', 'gemini-flash-latest'];
+const GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -27,28 +27,37 @@ ${context ? `【ユーザーの現在の家計データ】\n${context}` : ''}`;
     parts: [{ text: m.content }],
   }));
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
   let lastError = '';
   for (const model of GEMINI_MODELS) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemInstruction }] },
-          contents,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        lastError = data.error?.message || `HTTP ${response.status}`;
-        continue;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            contents,
+          }),
+        });
+        const data = await response.json();
+        if (response.status === 503 || response.status === 429) {
+          lastError = data.error?.message || `HTTP ${response.status}`;
+          await sleep(1500 * (attempt + 1));
+          continue;
+        }
+        if (!response.ok) {
+          lastError = data.error?.message || `HTTP ${response.status}`;
+          break;
+        }
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) { lastError = 'Empty response'; break; }
+        return res.json({ content: text });
+      } catch (err) {
+        lastError = err.message;
       }
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) { lastError = 'Empty response'; continue; }
-      return res.json({ content: text });
-    } catch (err) {
-      lastError = err.message;
     }
   }
   console.error('All models failed:', lastError);
