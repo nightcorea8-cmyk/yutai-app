@@ -23,6 +23,12 @@ function getMonthLabel(yyyymm) {
   return `${y}年${parseInt(m, 10)}月`;
 }
 
+function shiftMonth(yyyymm, delta) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function parseCSVLine(line) {
   const result = [];
   let current = '';
@@ -512,15 +518,35 @@ export default function Kakeibo() {
       </div>
 
       {/* 月セレクター */}
-      <div className="flex items-center gap-2 mb-3 overflow-x-auto scrollbar-none pb-1">
-        {[...new Set([viewMonth, ...availableMonths])].slice(0, 6).map((m) => (
-          <button key={m} onClick={() => setViewMonth(m)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 transition-colors ${
-              viewMonth === m ? 'bg-[#2d5f3f] text-white' : 'bg-white text-gray-600 border border-black/10'
-            }`}>
-            {getMonthLabel(m)}
-          </button>
-        ))}
+      <div className="flex items-center gap-2 mb-3">
+        <button
+          onClick={() => setViewMonth((m) => shiftMonth(m, -1))}
+          className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border border-black/10 text-gray-500 hover:bg-gray-50 transition-colors"
+          aria-label="前の月"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <div className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-none">
+          {[...new Set([viewMonth, ...availableMonths])].slice(0, 6).map((m) => (
+            <button key={m} onClick={() => setViewMonth(m)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 transition-colors ${
+                viewMonth === m ? 'bg-[#2d5f3f] text-white' : 'bg-white text-gray-600 border border-black/10'
+              }`}>
+              {getMonthLabel(m)}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setViewMonth((m) => shiftMonth(m, 1))}
+          className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border border-black/10 text-gray-500 hover:bg-gray-50 transition-colors"
+          aria-label="次の月"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
       </div>
 
       {/* 月サマリー */}
