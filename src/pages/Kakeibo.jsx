@@ -405,6 +405,28 @@ export default function Kakeibo() {
     }
   }, [cardCsvRows, transactions]);
 
+  // 口座のカード払い行とカード明細を手動リンク
+  const handleLinkStatement = useCallback(async (txId, stmtId) => {
+    try {
+      await updateDoc(doc(db, 'transactions', txId), { cardStatementId: stmtId });
+      await updateDoc(doc(db, 'cardStatements', stmtId), { linkedTransactionId: txId });
+    } catch (err) {
+      console.error('link error:', err);
+      alert('リンクに失敗しました');
+    }
+  }, []);
+
+  // リンク解除
+  const handleUnlinkStatement = useCallback(async (txId, stmtId) => {
+    try {
+      await updateDoc(doc(db, 'transactions', txId), { cardStatementId: null });
+      await updateDoc(doc(db, 'cardStatements', stmtId), { linkedTransactionId: null });
+      setExpandedTxId(null);
+    } catch (err) {
+      console.error('unlink error:', err);
+    }
+  }, []);
+
   const toggleBankRow = useCallback((idx) => {
     setBankCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, selected: !r.selected } : r));
   }, []);
@@ -654,7 +676,7 @@ export default function Kakeibo() {
                               <span className="text-xs bg-blue-50 text-blue-400 px-1.5 py-0.5 rounded-full">口座</span>
                             )}
                             {linkedStatement && (
-                              <span className="text-xs bg-[#c47c2b]/10 text-[#c47c2b] px-1.5 py-0.5 rounded-full">カードリンク済み</span>
+                              <span className="text-xs bg-[#c47c2b]/10 text-[#c47c2b] px-1.5 py-0.5 rounded-full">明細リンク済</span>
                             )}
                           </div>
                           {t.description && (
@@ -668,11 +690,15 @@ export default function Kakeibo() {
                           }`}>
                             {t.type === 'income' ? '+' : '-'}¥{formatJPY(t.amount)}
                           </span>
-                          {linkedStatement && (
+                          {t.isCardPayment && (
                             <button
                               onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
                               className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
-                                isExpanded ? 'bg-[#c47c2b] text-white' : 'text-[#c47c2b] border border-[#c47c2b]/30'
+                                isExpanded
+                                  ? 'bg-[#c47c2b] text-white'
+                                  : linkedStatement
+                                    ? 'text-[#c47c2b] border border-[#c47c2b]/30'
+                                    : 'text-gray-300 border border-gray-200'
                               }`}
                               aria-label="カード明細を展開"
                             >
@@ -693,32 +719,65 @@ export default function Kakeibo() {
                       </div>
 
                       {/* カード明細ドリルダウン */}
-                      {isExpanded && linkedStatement && (
-                        <div className="bg-[#fdf8f3] rounded-b-2xl border border-t-0 border-[#c47c2b]/20 overflow-hidden">
-                          <div className="px-4 py-2 border-b border-[#c47c2b]/10 flex items-center justify-between">
-                            <p className="text-xs font-semibold text-[#c47c2b]">
-                              カード明細 {linkedStatement.items?.length}件
-                            </p>
-                            <p className="text-xs text-[#c47c2b]">
-                              合計 ¥{formatJPY(linkedStatement.totalAmount)}
-                            </p>
-                          </div>
-                          <div className="divide-y divide-[#c47c2b]/8">
-                            {(linkedStatement.items || []).map((item, i) => (
-                              <div key={i} className="px-4 py-2.5 flex items-center justify-between">
-                                <div className="flex-1 min-w-0 mr-3">
-                                  <p className="text-xs font-medium text-gray-700 truncate">{item.merchant}</p>
-                                  <p className="text-xs text-gray-400">
-                                    {item.date.replace(/-/g, '/')} · {item.category} · {item.addedBy}
-                                  </p>
-                                </div>
-                                <span className="text-sm font-semibold text-[#b83232] flex-shrink-0">
-                                  ¥{formatJPY(item.amount)}
-                                </span>
+                      {isExpanded && t.isCardPayment && (
+                        linkedStatement ? (
+                          <div className="bg-[#fdf8f3] rounded-b-2xl border border-t-0 border-[#c47c2b]/20 overflow-hidden">
+                            <div className="px-4 py-2 border-b border-[#c47c2b]/10 flex items-center justify-between">
+                              <p className="text-xs font-semibold text-[#c47c2b]">
+                                カード明細 {linkedStatement.items?.length}件
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs text-[#c47c2b]">合計 ¥{formatJPY(linkedStatement.totalAmount)}</p>
+                                <button
+                                  onClick={() => handleUnlinkStatement(t.id, linkedStatement.id)}
+                                  className="text-xs text-gray-300 hover:text-gray-400 underline"
+                                >解除</button>
                               </div>
-                            ))}
+                            </div>
+                            <div className="divide-y divide-[#c47c2b]/8">
+                              {(linkedStatement.items || []).map((item, i) => (
+                                <div key={i} className="px-4 py-2.5 flex items-center justify-between">
+                                  <div className="flex-1 min-w-0 mr-3">
+                                    <p className="text-xs font-medium text-gray-700 truncate">{item.merchant}</p>
+                                    <p className="text-xs text-gray-400">
+                                      {item.date.replace(/-/g, '/')} · {item.category} · {item.addedBy}
+                                    </p>
+                                  </div>
+                                  <span className="text-sm font-semibold text-[#b83232] flex-shrink-0">
+                                    ¥{formatJPY(item.amount)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="bg-gray-50 rounded-b-2xl border border-t-0 border-black/5 px-4 py-3">
+                            {cardStatements.filter((s) => !s.linkedTransactionId).length === 0 ? (
+                              <p className="text-xs text-gray-400 text-center py-2">カード明細がまだインポートされていません</p>
+                            ) : (
+                              <>
+                                <p className="text-xs text-gray-400 mb-2">リンクするカード明細を選択</p>
+                                <div className="space-y-2">
+                                  {cardStatements.filter((s) => !s.linkedTransactionId).map((s) => (
+                                    <button
+                                      key={s.id}
+                                      onClick={() => handleLinkStatement(t.id, s.id)}
+                                      className="w-full text-left bg-white rounded-xl border border-[#c47c2b]/20 px-3 py-2.5 hover:bg-[#fdf8f3] transition-colors"
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-[#c47c2b]">{s.items?.length}件</span>
+                                        <span className="text-sm font-bold text-[#b83232]">¥{formatJPY(s.totalAmount)}</span>
+                                      </div>
+                                      <p className="text-xs text-gray-400 mt-0.5">
+                                        {s.items?.[0]?.date?.replace(/-/g, '/')} 〜 {s.items?.[s.items.length - 1]?.date?.replace(/-/g, '/')}
+                                      </p>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )
                       )}
                     </div>
                   );
