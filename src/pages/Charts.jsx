@@ -56,18 +56,18 @@ function SegmentControl({ value, onChange, options }) {
 
 function DonutLegend({ data, total }) {
   return (
-    <div className="flex-1 space-y-2 min-w-0">
+    <div className="flex-1 space-y-2.5 min-w-0">
       {data.map((item, i) => {
         const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
         return (
-          <div key={i} className="flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-1.5 min-w-0">
+          <div key={i}>
+            <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-              <span className="text-xs text-gray-600 truncate">{item.name}</span>
+              <span className="text-xs text-gray-600">{item.name}</span>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1.5 pl-4 mt-0.5">
               <span className="text-[11px] text-gray-400">¥{formatJPY(item.value)}</span>
-              <span className="text-xs font-bold text-gray-800 w-7 text-right">{pct}%</span>
+              <span className="text-xs font-bold text-gray-800">{pct}%</span>
             </div>
           </div>
         );
