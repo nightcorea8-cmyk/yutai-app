@@ -89,10 +89,10 @@ export default function FPChat() {
         body: JSON.stringify({ messages: newMsgs.slice(1), context: buildContext() }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       setMessages([...newMsgs, { role: 'assistant', content: data.content }]);
-    } catch {
-      setMessages([...newMsgs, { role: 'assistant', content: 'エラーが発生しました。しばらくしてからもう一度お試しください。' }]);
+    } catch (err) {
+      setMessages([...newMsgs, { role: 'assistant', content: `エラー: ${err.message}` }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
