@@ -31,6 +31,7 @@ function daysLeft(ds) {
 
 export default function Dashboard() {
   const [transactions, setTransactions] = useState([]);
+  const [cardStatements, setCardStatements] = useState([]);
   const [assets, setAssets] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,6 +43,10 @@ export default function Dashboard() {
     const tq = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     unsubs.push(onSnapshot(tq, (snap) => {
       setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, () => {}));
+
+    unsubs.push(onSnapshot(collection(db, 'cardStatements'), (snap) => {
+      setCardStatements(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, () => {}));
 
     unsubs.push(onSnapshot(collection(db, 'assets'), (snap) => {
@@ -71,8 +76,19 @@ export default function Dashboard() {
   )].sort((a, b) => b.localeCompare(a));
 
   const monthlyTx = transactions.filter((t) => t.date?.startsWith(viewMonth));
-  const totalIncome = monthlyTx.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
-  const totalExpense = monthlyTx.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
+
+  const getEffectiveAmount = (t) => {
+    if (t.excludeFromBalance) return 0;
+    const stmt = t.cardStatementId ? cardStatements.find((s) => s.id === t.cardStatementId) : null;
+    if (stmt) {
+      const excluded = (stmt.items || []).filter((i) => i.excludeFromBalance).reduce((s, i) => s + (i.amount || 0), 0);
+      return Math.max(0, (t.amount || 0) - excluded);
+    }
+    return t.amount || 0;
+  };
+
+  const totalIncome = monthlyTx.filter((t) => t.type === 'income').reduce((s, t) => s + getEffectiveAmount(t), 0);
+  const totalExpense = monthlyTx.filter((t) => t.type === 'expense').reduce((s, t) => s + getEffectiveAmount(t), 0);
   const balance = totalIncome - totalExpense;
   const totalAssets = assets.reduce((s, a) => s + (a.amount || 0), 0);
 

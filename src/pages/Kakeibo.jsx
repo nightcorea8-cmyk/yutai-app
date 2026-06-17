@@ -212,6 +212,25 @@ export default function Kakeibo() {
     localStorage.setItem('selectedUser', selectedUser);
   }, [selectedUser]);
 
+  // 未リンクのカード明細と口座取引を自動再リンク
+  const autoLinkedRef = useRef(false);
+  useEffect(() => {
+    if (loading || autoLinkedRef.current) return;
+    if (cardStatements.length === 0 || transactions.length === 0) return;
+    autoLinkedRef.current = true;
+    const unlinked = cardStatements.filter((s) => !s.linkedTransactionId);
+    if (unlinked.length === 0) return;
+    unlinked.forEach(async (stmt) => {
+      const match = transactions.find(
+        (t) => t.source === 'bank' && t.type === 'expense' && t.amount === stmt.totalAmount && !t.cardStatementId
+      );
+      if (match) {
+        await updateDoc(doc(db, 'cardStatements', stmt.id), { linkedTransactionId: match.id });
+        await updateDoc(doc(db, 'transactions', match.id), { cardStatementId: stmt.id });
+      }
+    });
+  }, [loading, cardStatements, transactions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // データロード後、表示月にデータがなければ最新データのある月へ自動移動
   useEffect(() => {
     if (loading || transactions.length === 0) return;
@@ -375,6 +394,7 @@ export default function Kakeibo() {
         amount: r.amount,
         category: r.category,
         addedBy: r.addedBy,
+        excludeFromBalance: r.excludeFromBalance || false,
       }));
 
       const stmtRef = await addDoc(collection(db, 'cardStatements'), {
@@ -455,6 +475,22 @@ export default function Kakeibo() {
   const toggleBankExclude = useCallback((idx) => {
     setBankCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, excludeFromBalance: !r.excludeFromBalance } : r));
   }, []);
+  const toggleCardExclude = useCallback((idx) => {
+    setCardCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, excludeFromBalance: !r.excludeFromBalance } : r));
+  }, []);
+
+  const handleToggleCardItemExclude = useCallback(async (stmtId, itemIndex, currentValue) => {
+    const stmt = cardStatements.find((s) => s.id === stmtId);
+    if (!stmt) return;
+    const newItems = (stmt.items || []).map((item, i) =>
+      i === itemIndex ? { ...item, excludeFromBalance: !currentValue } : item
+    );
+    try {
+      await updateDoc(doc(db, 'cardStatements', stmtId), { items: newItems });
+    } catch (err) {
+      console.error('toggle card item exclude error:', err);
+    }
+  }, [cardStatements]);
 
   // 月集計
   const availableMonths = [...new Set(
@@ -462,8 +498,19 @@ export default function Kakeibo() {
   )].sort((a, b) => b.localeCompare(a));
 
   const monthTx = transactions.filter((t) => t.date?.startsWith(viewMonth));
-  const monthIncome = monthTx.filter((t) => t.type === 'income' && !t.excludeFromBalance).reduce((s, t) => s + (t.amount || 0), 0);
-  const monthExpense = monthTx.filter((t) => t.type === 'expense' && !t.excludeFromBalance).reduce((s, t) => s + (t.amount || 0), 0);
+
+  const getEffectiveAmount = (t) => {
+    if (t.excludeFromBalance) return 0;
+    const stmt = t.cardStatementId ? cardStatements.find((s) => s.id === t.cardStatementId) : null;
+    if (stmt) {
+      const excluded = (stmt.items || []).filter((i) => i.excludeFromBalance).reduce((s, i) => s + (i.amount || 0), 0);
+      return Math.max(0, (t.amount || 0) - excluded);
+    }
+    return t.amount || 0;
+  };
+
+  const monthIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + getEffectiveAmount(t), 0);
+  const monthExpense = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + getEffectiveAmount(t), 0);
   const monthBalance = monthIncome - monthExpense;
 
   const byDate = {};
@@ -506,7 +553,7 @@ export default function Kakeibo() {
             <rect x="2" y="5" width="20" height="14" rx="2" />
             <path d="M2 10h20" />
           </svg>
-          口座明細 CSV
+          楽天銀行明細 CSV
         </button>
         <button
           onClick={() => { setCsvError(''); cardFileRef.current?.click(); }}
@@ -516,7 +563,7 @@ export default function Kakeibo() {
             <rect x="1" y="4" width="22" height="16" rx="2" />
             <line x1="1" y1="10" x2="23" y2="10" />
           </svg>
-          カード明細 CSV
+          楽天カード明細 CSV
         </button>
       </div>
 
@@ -758,25 +805,41 @@ export default function Kakeibo() {
                               カード明細 {linkedStatement.items?.length}件
                             </p>
                             <div className="flex items-center gap-3">
-                              <p className="text-xs text-[#c47c2b]">合計 ¥{formatJPY(linkedStatement.totalAmount)}</p>
-                              <button
-                                onClick={() => handleUnlinkStatement(t.id, linkedStatement.id)}
-                                className="text-xs text-gray-300 hover:text-gray-400 underline"
-                              >解除</button>
+                              {(() => {
+                                const excluded = (linkedStatement.items || []).filter((i) => i.excludeFromBalance).reduce((s, i) => s + (i.amount || 0), 0);
+                                const effective = linkedStatement.totalAmount - excluded;
+                                return excluded > 0
+                                  ? <p className="text-xs text-[#c47c2b]">有効 ¥{formatJPY(effective)} <span className="text-gray-300">(除外 ¥{formatJPY(excluded)})</span></p>
+                                  : <p className="text-xs text-[#c47c2b]">合計 ¥{formatJPY(linkedStatement.totalAmount)}</p>;
+                              })()}
                             </div>
                           </div>
                           <div className="divide-y divide-[#c47c2b]/8">
                             {(linkedStatement.items || []).map((item, i) => (
-                              <div key={i} className="px-4 py-2.5 flex items-center justify-between">
-                                <div className="flex-1 min-w-0 mr-3">
-                                  <p className="text-xs font-medium text-gray-700 truncate">{item.merchant}</p>
+                              <div key={i} className={`px-4 py-2.5 flex items-center justify-between gap-2 ${item.excludeFromBalance ? 'opacity-50' : ''}`}>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-xs font-medium truncate ${item.excludeFromBalance ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{item.merchant}</p>
                                   <p className="text-xs text-gray-400">
-                                    {item.date.replace(/-/g, '/')} · {item.category} · {item.addedBy}
+                                    {item.date.replace(/-/g, '/')} · {item.addedBy}
                                   </p>
                                 </div>
-                                <span className="text-sm font-semibold text-[#b83232] flex-shrink-0">
+                                <span className={`text-sm font-semibold flex-shrink-0 ${item.excludeFromBalance ? 'text-gray-300 line-through' : 'text-[#b83232]'}`}>
                                   ¥{formatJPY(item.amount)}
                                 </span>
+                                <button
+                                  onClick={() => handleToggleCardItemExclude(linkedStatement.id, i, item.excludeFromBalance)}
+                                  className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors flex-shrink-0 ${
+                                    item.excludeFromBalance
+                                      ? 'bg-gray-100 border-gray-300 text-gray-400'
+                                      : 'border-gray-200 text-gray-300 hover:border-gray-300 hover:text-gray-400'
+                                  }`}
+                                  title={item.excludeFromBalance ? '収支に含める' : '収支から除外'}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                                    <circle cx="12" cy="12" r="9" />
+                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                                  </svg>
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -966,12 +1029,24 @@ export default function Kakeibo() {
                       </div>
                       <span className="text-base font-bold text-[#b83232]">¥{formatJPY(row.amount)}</span>
                     </div>
-                    <p className="text-sm font-medium text-gray-700 truncate mb-2">{row.merchant}</p>
-                    <select value={row.category} onChange={(e) => updateCardCategory(idx, e.target.value)}
-                      disabled={!row.selected}
-                      className="w-full px-3 py-2 text-xs border border-black/10 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#c47c2b]">
-                      {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <p className={`text-sm font-medium truncate mb-2 ${row.excludeFromBalance ? 'text-gray-300 line-through' : 'text-gray-700'}`}>{row.merchant}</p>
+                    <div className="flex items-center gap-2">
+                      <select value={row.category} onChange={(e) => updateCardCategory(idx, e.target.value)}
+                        disabled={!row.selected}
+                        className="flex-1 px-2 py-1.5 text-xs border border-black/10 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#c47c2b]">
+                        {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer w-fit">
+                      <input
+                        type="checkbox"
+                        checked={row.excludeFromBalance || false}
+                        onChange={() => toggleCardExclude(idx)}
+                        disabled={!row.selected}
+                        className="w-3.5 h-3.5 rounded border-gray-300 accent-gray-400"
+                      />
+                      <span className="text-xs text-gray-400">収支から除外</span>
+                    </label>
                   </div>
                 </div>
               </div>
