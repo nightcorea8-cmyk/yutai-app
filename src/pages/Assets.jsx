@@ -140,17 +140,23 @@ const HOLDING_TYPE_LABEL = {
 
 export default function Assets() {
   const [assets, setAssets] = useState([]);
+  const [portfolios, setPortfolios] = useState({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [stockPortfolio, setStockPortfolio] = useState(null);
-  const [stockCsvError, setStockCsvError] = useState('');
+  const [pendingItems, setPendingItems] = useState([]);
+  const [pendingTotalJPY, setPendingTotalJPY] = useState(0);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [accountName, setAccountName] = useState('');
   const [stockImporting, setStockImporting] = useState(false);
-  const [expandedType, setExpandedType] = useState(null);
+  const [stockCsvError, setStockCsvError] = useState('');
   const stockFileRef = useRef(null);
+
+  const [expandedAssetId, setExpandedAssetId] = useState(null);
+  const [expandedTypeKey, setExpandedTypeKey] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'assets'), (snap) => {
@@ -161,8 +167,10 @@ export default function Assets() {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'stockPortfolio', 'rakuten'), (snap) => {
-      if (snap.exists()) setStockPortfolio(snap.data());
+    const unsub = onSnapshot(collection(db, 'stockPortfolio'), (snap) => {
+      const map = {};
+      snap.docs.forEach((d) => { map[d.id] = d.data(); });
+      setPortfolios(map);
     }, () => {});
     return unsub;
   }, []);
@@ -213,10 +221,13 @@ export default function Assets() {
     setShowForm(false);
   }, []);
 
-  const handleDelete = useCallback(async (id) => {
+  const handleDelete = useCallback(async (asset) => {
     if (!confirm('この資産を削除しますか？')) return;
     try {
-      await deleteDoc(doc(db, 'assets', id));
+      if (asset.source === 'rakuten' && asset.portfolioId) {
+        await deleteDoc(doc(db, 'stockPortfolio', asset.portfolioId));
+      }
+      await deleteDoc(doc(db, 'assets', asset.id));
     } catch {
       alert('削除に失敗しました');
     }
@@ -234,27 +245,69 @@ export default function Assets() {
         setStockCsvError('楽天証券の資産残高CSVを選択してください（「資産残高一覧」からダウンロード）。');
         return;
       }
-      setStockImporting(true);
-      const totalValueJPY = items.reduce((s, i) => s + i.currentValueJPY, 0);
-      await setDoc(doc(db, 'stockPortfolio', 'rakuten'), {
-        items,
-        totalValueJPY,
-        importedAt: serverTimestamp(),
-      });
+      const total = items.reduce((s, i) => s + i.currentValueJPY, 0);
+      setPendingItems(items);
+      setPendingTotalJPY(total);
+      setAccountName('');
+      setShowNameModal(true);
     } catch (err) {
       console.error(err);
       setStockCsvError('読み込みに失敗しました。');
-    } finally {
-      setStockImporting(false);
     }
   }, []);
 
-  // 保有銘柄をタイプ別にグループ化
-  const holdingsByType = stockPortfolio
-    ? HOLDING_TYPE_ORDER
-        .map((t) => ({ type: t, label: HOLDING_TYPE_LABEL[t] || t, items: (stockPortfolio.items || []).filter((i) => i.type === t) }))
-        .filter((g) => g.items.length > 0)
-    : [];
+  const handleImportConfirm = useCallback(async () => {
+    const name = accountName.trim();
+    if (!name) return;
+    setShowNameModal(false);
+    setStockImporting(true);
+    try {
+      const existing = assets.find((a) => a.source === 'rakuten' && a.name === name);
+      let portfolioId;
+      if (existing) {
+        portfolioId = existing.portfolioId;
+        await updateDoc(doc(db, 'assets', existing.id), {
+          amount: pendingTotalJPY,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        portfolioId = `rakuten_${Date.now()}`;
+        await addDoc(collection(db, 'assets'), {
+          source: 'rakuten',
+          portfolioId,
+          name,
+          type: 'stock',
+          amount: pendingTotalJPY,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await setDoc(doc(db, 'stockPortfolio', portfolioId), {
+        items: pendingItems,
+        totalValueJPY: pendingTotalJPY,
+        accountName: name,
+        importedAt: serverTimestamp(),
+      });
+      setPendingItems([]);
+      setPendingTotalJPY(0);
+    } catch (err) {
+      console.error(err);
+      alert('インポートに失敗しました');
+    } finally {
+      setStockImporting(false);
+    }
+  }, [accountName, assets, pendingItems, pendingTotalJPY]);
+
+  const toggleAssetExpand = useCallback((assetId) => {
+    setExpandedAssetId((prev) => (prev === assetId ? null : assetId));
+    setExpandedTypeKey(null);
+  }, []);
+
+  const toggleTypeExpand = useCallback((key) => {
+    setExpandedTypeKey((prev) => (prev === key ? null : key));
+  }, []);
+
+  const existingRakutenNames = assets.filter((a) => a.source === 'rakuten').map((a) => a.name);
+  const sortedAssets = assets.slice().sort((a, b) => (b.amount || 0) - (a.amount || 0));
 
   return (
     <div className="p-5 max-w-2xl mx-auto">
@@ -262,7 +315,7 @@ export default function Assets() {
         <h1 className="text-lg font-bold text-gray-800">資産管理</h1>
       </div>
 
-      {/* Total */}
+      {/* 資産総額 */}
       <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-6 mb-5">
         <p className="text-sm text-gray-500 mb-2">資産総額</p>
         <p className="text-4xl font-bold text-[#c47c2b]">¥{formatJPY(totalAssets)}</p>
@@ -304,79 +357,52 @@ export default function Assets() {
         </svg>
         {stockImporting ? '読み込み中…' : '楽天証券 資産残高 CSV'}
       </button>
-      {stockCsvError && <p className="text-xs text-[#b83232] text-center mb-2">{stockCsvError}</p>}
+      {stockCsvError && <p className="text-xs text-[#b83232] text-center mb-1">{stockCsvError}</p>}
 
-      {/* 楽天証券 保有銘柄 */}
-      {stockPortfolio && holdingsByType.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-black/5 mb-5 overflow-hidden">
-          <div className="px-4 py-3 border-b border-black/5 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-bold text-gray-800">楽天証券 保有銘柄</p>
-              <p className="text-xs text-gray-400 mt-0.5">時価評価額合計 <span className="font-semibold text-[#6b4aa0]">¥{formatJPY(stockPortfolio.totalValueJPY)}</span></p>
+      {/* 口座名入力モーダル */}
+      {showNameModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm">
+            <h3 className="text-sm font-bold text-gray-800 mb-1">口座名を入力</h3>
+            <p className="text-xs text-gray-400 mb-3">インポートする楽天証券の口座名を設定してください（同名で上書きされます）</p>
+            {existingRakutenNames.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {existingRakutenNames.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setAccountName(n)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${accountName === n ? 'bg-[#6b4aa0] text-white border-[#6b4aa0]' : 'border-[#6b4aa0]/30 text-[#6b4aa0] hover:bg-[#6b4aa0]/10'}`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              type="text"
+              value={accountName}
+              onChange={(e) => setAccountName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && accountName.trim()) handleImportConfirm(); }}
+              placeholder="例：楽天証券（夫）"
+              autoFocus
+              className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6b4aa0] mb-3"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowNameModal(false); setPendingItems([]); setPendingTotalJPY(0); }}
+                className="px-4 py-2.5 text-sm border border-black/15 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleImportConfirm}
+                disabled={!accountName.trim()}
+                className="flex-1 py-2.5 bg-[#6b4aa0] text-white rounded-xl font-medium text-sm disabled:opacity-40 hover:bg-[#5a3d87] transition-colors"
+              >
+                インポート
+              </button>
             </div>
           </div>
-
-          {holdingsByType.map(({ type, label, items }) => {
-            const typeTotal = items.reduce((s, i) => s + i.currentValueJPY, 0);
-            const typePnL = items.reduce((s, i) => s + i.unrealizedPnL, 0);
-            const isExpanded = expandedType === type;
-
-            return (
-              <div key={type} className="border-b border-black/5 last:border-b-0">
-                <button
-                  onClick={() => setExpandedType(isExpanded ? null : type)}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{label}</span>
-                    <span className="text-xs text-gray-400">{items.length}銘柄</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-gray-800">¥{formatJPY(typeTotal)}</p>
-                      <p className={`text-xs font-medium ${typePnL >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
-                        {typePnL >= 0 ? '+' : ''}¥{formatJPY(typePnL)}
-                      </p>
-                    </div>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                      className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}>
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-                </button>
-
-                {isExpanded && (
-                  <div className="divide-y divide-black/5 bg-gray-50/50">
-                    {items.map((item, i) => (
-                      <div key={i} className="px-4 py-3 flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
-                            {item.ticker && (
-                              <span className="text-xs text-gray-400 font-mono flex-shrink-0">{item.ticker}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-xs text-gray-400">{item.account}</p>
-                            <p className="text-xs text-gray-400">{new Intl.NumberFormat('ja-JP').format(item.quantity)}{item.unit}</p>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-sm font-bold text-gray-800">¥{formatJPY(item.currentValueJPY)}</p>
-                          <p className={`text-xs font-medium ${item.unrealizedPnL >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
-                            {item.unrealizedPnL >= 0 ? '+' : ''}¥{formatJPY(item.unrealizedPnL)}
-                            <span className="text-gray-400 font-normal ml-1">
-                              ({item.unrealizedPnLPct >= 0 ? '+' : ''}{item.unrealizedPnLPct.toFixed(2)}%)
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
       )}
 
@@ -384,7 +410,7 @@ export default function Assets() {
       {!showForm && (
         <button
           onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }}
-          className="w-full py-3.5 bg-[#2d5f3f] text-white rounded-xl font-semibold text-base hover:bg-[#24502f] transition-colors mb-5 flex items-center justify-center gap-2"
+          className="w-full py-3.5 bg-[#2d5f3f] text-white rounded-xl font-semibold text-base hover:bg-[#24502f] transition-colors mb-5 mt-3 flex items-center justify-center gap-2"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -394,9 +420,9 @@ export default function Assets() {
         </button>
       )}
 
-      {/* Form */}
+      {/* 追加フォーム */}
       {showForm && (
-        <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-5 mt-3">
           <h2 className="text-sm font-bold text-gray-800 mb-3">{editingId ? '資産を編集' : '資産を追加'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
@@ -446,7 +472,7 @@ export default function Assets() {
         </div>
       )}
 
-      {/* Asset list */}
+      {/* 資産一覧 */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-7 h-7 border-2 border-gray-200 border-t-[#2d5f3f] rounded-full animate-spin-custom" />
@@ -461,36 +487,157 @@ export default function Assets() {
         </div>
       ) : (
         <div className="space-y-2">
-          {assets.slice().sort((a, b) => (b.amount || 0) - (a.amount || 0)).map((asset) => (
-            <div key={asset.id} className="bg-white rounded-2xl border border-black/5 shadow-sm px-5 py-4 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(asset.type)}`}>
-                    {typeLabel(asset.type)}
-                  </span>
+          {sortedAssets.map((asset) => {
+            const isRakuten = asset.source === 'rakuten';
+            const isExpanded = expandedAssetId === asset.id;
+            const portfolio = isRakuten && asset.portfolioId ? portfolios[asset.portfolioId] : null;
+            const holdingsByType = portfolio
+              ? HOLDING_TYPE_ORDER
+                  .map((t) => ({ type: t, label: HOLDING_TYPE_LABEL[t] || t, items: (portfolio.items || []).filter((i) => i.type === t) }))
+                  .filter((g) => g.items.length > 0)
+              : [];
+
+            return (
+              <div key={asset.id} className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+                {/* メイン行 */}
+                <div className="px-5 py-4 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(asset.type)}`}>
+                        {typeLabel(asset.type)}
+                      </span>
+                      {isRakuten && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-[#ede9f5] text-[#6b4aa0]">楽天証券</span>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium text-gray-800 truncate">{asset.name}</p>
+                    {asset.note && <p className="text-xs text-gray-400 truncate">{asset.note}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-base font-bold text-gray-800">¥{formatJPY(asset.amount || 0)}</span>
+                    {isRakuten ? (
+                      <>
+                        <button
+                          onClick={() => toggleAssetExpand(asset.id)}
+                          className="text-gray-400 hover:text-[#6b4aa0] transition-colors p-1.5"
+                          aria-label="詳細を表示"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                            className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(asset)}
+                          className="text-gray-300 hover:text-[#b83232] transition-colors p-1.5"
+                          aria-label="削除"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
+                          </svg>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startEdit(asset)}
+                          className="text-gray-400 hover:text-[#2d5f3f] transition-colors p-1.5"
+                          aria-label="編集"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(asset)}
+                          className="text-gray-300 hover:text-[#b83232] transition-colors p-1.5"
+                          aria-label="削除"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm font-medium text-gray-800 truncate">{asset.name}</p>
-                {asset.note && <p className="text-xs text-gray-400 truncate">{asset.note}</p>}
+
+                {/* 保有銘柄ドリルダウン（楽天証券のみ） */}
+                {isExpanded && isRakuten && (
+                  <div className="border-t border-black/5">
+                    {holdingsByType.length === 0 ? (
+                      <p className="text-xs text-gray-400 py-3 px-5">銘柄データがありません</p>
+                    ) : (
+                      holdingsByType.map(({ type, label, items }) => {
+                        const typeTotal = items.reduce((s, i) => s + i.currentValueJPY, 0);
+                        const typePnL = items.reduce((s, i) => s + i.unrealizedPnL, 0);
+                        const typeKey = `${asset.portfolioId}::${type}`;
+                        const isTypeExpanded = expandedTypeKey === typeKey;
+
+                        return (
+                          <div key={type} className="border-b border-black/5 last:border-b-0">
+                            <button
+                              onClick={() => toggleTypeExpand(typeKey)}
+                              className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{label}</span>
+                                <span className="text-xs text-gray-400">{items.length}銘柄</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-right">
+                                  <p className="text-sm font-bold text-gray-800">¥{formatJPY(typeTotal)}</p>
+                                  <p className={`text-xs font-medium ${typePnL >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
+                                    {typePnL >= 0 ? '+' : ''}¥{formatJPY(typePnL)}
+                                  </p>
+                                </div>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                  className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isTypeExpanded ? 'rotate-180' : ''}`}>
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </div>
+                            </button>
+
+                            {isTypeExpanded && (
+                              <div className="divide-y divide-black/5 bg-gray-50/50">
+                                {items.map((item, i) => (
+                                  <div key={i} className="px-5 py-3 flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                                        {item.ticker && (
+                                          <span className="text-xs text-gray-400 font-mono flex-shrink-0">{item.ticker}</span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-gray-400 mt-0.5">
+                                        {item.account} · {new Intl.NumberFormat('ja-JP').format(item.quantity)}{item.unit}
+                                      </p>
+                                    </div>
+                                    <div className="text-right flex-shrink-0">
+                                      <p className="text-sm font-bold text-gray-800">¥{formatJPY(item.currentValueJPY)}</p>
+                                      <p className={`text-xs font-medium ${item.unrealizedPnL >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
+                                        {item.unrealizedPnL >= 0 ? '+' : ''}¥{formatJPY(item.unrealizedPnL)}
+                                        <span className="text-gray-400 font-normal ml-1">
+                                          ({item.unrealizedPnLPct >= 0 ? '+' : ''}{item.unrealizedPnLPct.toFixed(2)}%)
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-base font-bold text-gray-800">¥{formatJPY(asset.amount || 0)}</span>
-                <button onClick={() => startEdit(asset)}
-                  className="text-gray-400 hover:text-[#2d5f3f] transition-colors p-1" aria-label="編集">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
-                <button onClick={() => handleDelete(asset.id)}
-                  className="text-gray-300 hover:text-[#b83232] transition-colors p-1" aria-label="削除">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
