@@ -12,6 +12,17 @@ function getCurrentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function getMonthLabel(yyyymm) {
+  const [y, m] = yyyymm.split('-');
+  return `${y}年${parseInt(m, 10)}月`;
+}
+
+function shiftMonth(yyyymm, delta) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function daysLeft(ds) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -25,13 +36,15 @@ export default function Dashboard() {
   const [assets, setAssets] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [viewMonth, setViewMonth] = useState(getCurrentMonth);
 
   useEffect(() => {
     const unsubs = [];
 
-    const tq = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'));
+    const tq = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     unsubs.push(onSnapshot(tq, (snap) => {
-      setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTransactions(docs);
     }, () => {}));
 
     unsubs.push(onSnapshot(collection(db, 'assets'), (snap) => {
@@ -47,9 +60,11 @@ export default function Dashboard() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  const currentMonth = getCurrentMonth();
+  const availableMonths = [...new Set(
+    transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean)
+  )].sort((a, b) => b.localeCompare(a));
 
-  const monthlyTx = transactions.filter((t) => t.date && t.date.startsWith(currentMonth));
+  const monthlyTx = transactions.filter((t) => t.date && t.date.startsWith(viewMonth));
   const totalIncome = monthlyTx.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const totalExpense = monthlyTx.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
   const balance = totalIncome - totalExpense;
@@ -75,9 +90,11 @@ export default function Dashboard() {
     .slice(0, 3);
   const maxCatAmount = topCategories.length > 0 ? topCategories[0][1] : 1;
 
+  const monthLabel = getMonthLabel(viewMonth);
+
   const summaryCards = [
     {
-      label: '今月の収入',
+      label: `${monthLabel}の収入`,
       value: `¥${formatJPY(totalIncome)}`,
       color: 'text-[#2d5f3f]',
       bg: 'bg-[#e8f0eb]',
@@ -88,7 +105,7 @@ export default function Dashboard() {
       ),
     },
     {
-      label: '今月の支出',
+      label: `${monthLabel}の支出`,
       value: `¥${formatJPY(totalExpense)}`,
       color: 'text-[#b83232]',
       bg: 'bg-[#fbeaea]',
@@ -99,7 +116,7 @@ export default function Dashboard() {
       ),
     },
     {
-      label: '今月の収支',
+      label: `${monthLabel}の収支`,
       value: `${balance >= 0 ? '+' : '-'}¥${formatJPY(balance)}`,
       color: balance >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]',
       bg: balance >= 0 ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]',
@@ -136,10 +153,37 @@ export default function Dashboard() {
 
   return (
     <div className="p-5 max-w-2xl mx-auto lg:max-w-3xl">
-      {/* Month label */}
+      {/* ヘッダー + 月ナビゲーター */}
       <div className="mb-5">
-        <h1 className="text-lg font-bold text-gray-800">ダッシュボード</h1>
-        <p className="text-sm text-gray-400 mt-0.5">{currentMonth.replace('-', '年')}月</p>
+        <h1 className="text-lg font-bold text-gray-800 mb-3">ダッシュボード</h1>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setViewMonth((m) => shiftMonth(m, -1))}
+            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10 transition-colors"
+            aria-label="前の月"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5 text-gray-500">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <div className="text-center">
+            <p className="text-base font-bold text-gray-800">{monthLabel}</p>
+            {availableMonths.includes(viewMonth) ? (
+              <p className="text-xs text-[#2d5f3f] mt-0.5">● データあり</p>
+            ) : (
+              <p className="text-xs text-gray-300 mt-0.5">記録なし</p>
+            )}
+          </div>
+          <button
+            onClick={() => setViewMonth((m) => shiftMonth(m, 1))}
+            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10 transition-colors"
+            aria-label="次の月"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5 text-gray-500">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -198,11 +242,11 @@ export default function Dashboard() {
       {/* Top 3 expense categories */}
       <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-gray-800">今月の支出 TOP3</h2>
+          <h2 className="text-sm font-bold text-gray-800">{monthLabel}の支出 TOP3</h2>
           <Link to="/kakeibo" className="text-xs text-[#2d5f3f] font-medium">詳細 →</Link>
         </div>
         {topCategories.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">今月の支出データがありません</p>
+          <p className="text-sm text-gray-400 py-6 text-center">{monthLabel}の支出データがありません</p>
         ) : (
           <div className="space-y-4">
             {topCategories.map(([cat, amount], i) => {
