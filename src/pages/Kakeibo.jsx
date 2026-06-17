@@ -417,13 +417,14 @@ export default function Kakeibo() {
 
   const handleBulkDelete = useCallback(async () => {
     setShowDeleteConfirm(false);
+    const toDelete = transactions.filter((t) => t.date?.startsWith(viewMonth));
     try {
-      await Promise.all(monthTx.map((t) => deleteDoc(doc(db, 'transactions', t.id))));
+      await Promise.all(toDelete.map((t) => deleteDoc(doc(db, 'transactions', t.id))));
     } catch (err) {
       console.error('bulk delete error:', err);
       alert('一括削除に失敗しました');
     }
-  }, [monthTx]);
+  }, [transactions, viewMonth]);
 
   // リンク解除
   const handleUnlinkStatement = useCallback(async (txId, stmtId) => {
