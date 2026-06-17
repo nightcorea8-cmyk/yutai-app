@@ -530,33 +530,31 @@ export default function Kakeibo() {
         )}
       </div>
 
-      {/* 月セレクター */}
-      <div className="flex items-center gap-2 mb-3">
+      {/* 月ナビゲーター */}
+      <div className="flex items-center justify-between mb-4">
         <button
           onClick={() => setViewMonth((m) => shiftMonth(m, -1))}
-          className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border border-black/10 text-gray-500 hover:bg-gray-50 transition-colors"
+          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10 transition-colors"
           aria-label="前の月"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5 text-gray-500">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <div className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-none">
-          {[...new Set([viewMonth, ...availableMonths])].slice(0, 6).map((m) => (
-            <button key={m} onClick={() => setViewMonth(m)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 transition-colors ${
-                viewMonth === m ? 'bg-[#2d5f3f] text-white' : 'bg-white text-gray-600 border border-black/10'
-              }`}>
-              {getMonthLabel(m)}
-            </button>
-          ))}
+        <div className="text-center">
+          <p className="text-base font-bold text-gray-800">{getMonthLabel(viewMonth)}</p>
+          {availableMonths.includes(viewMonth) ? (
+            <p className="text-xs text-[#2d5f3f] mt-0.5">● データあり</p>
+          ) : (
+            <p className="text-xs text-gray-300 mt-0.5">記録なし</p>
+          )}
         </div>
         <button
           onClick={() => setViewMonth((m) => shiftMonth(m, 1))}
-          className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border border-black/10 text-gray-500 hover:bg-gray-50 transition-colors"
+          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10 transition-colors"
           aria-label="次の月"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5 text-gray-500">
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
