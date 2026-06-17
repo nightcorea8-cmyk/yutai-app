@@ -235,32 +235,32 @@ export default function Yutai() {
   const list = sortedStocks();
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-base font-bold text-gray-800">株主優待</h1>
+    <div className="p-5 max-w-2xl mx-auto">
+      <div className="mb-5">
+        <h1 className="text-lg font-bold text-gray-800">株主優待</h1>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-5">
         {[
           { label: '保有銘柄', value: totalCount },
           { label: '期限間近', value: expiringSoon },
           { label: '優先度：高', value: highPriority },
         ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-xl border border-black/5 shadow-sm p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">{label}</p>
-            <p className="text-2xl font-bold text-gray-800">{loading ? '-' : value}</p>
+          <div key={label} className="bg-white rounded-2xl border border-black/5 shadow-sm p-4 text-center">
+            <p className="text-xs text-gray-400 mb-2">{label}</p>
+            <p className="text-3xl font-bold text-gray-800">{loading ? '-' : value}</p>
           </div>
         ))}
       </div>
 
       {/* Tab switcher */}
-      <div className="flex rounded-xl overflow-hidden border border-black/10 bg-white mb-4">
+      <div className="flex rounded-xl overflow-hidden border border-black/10 bg-white mb-5">
         {['list', 'calendar'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 py-3 text-sm font-semibold transition-colors ${
               activeTab === tab ? 'bg-[#2d5f3f] text-white' : 'text-gray-500 hover:bg-gray-50'
             }`}
           >

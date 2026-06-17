@@ -110,13 +110,13 @@ export default function Budget() {
   const totalPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : 0;
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-base font-bold text-gray-800">予算管理</h1>
+    <div className="p-5 max-w-2xl mx-auto">
+      <div className="mb-5">
+        <h1 className="text-lg font-bold text-gray-800">予算管理</h1>
       </div>
 
       {/* Month navigator */}
-      <div className="flex items-center justify-between bg-white rounded-2xl shadow-sm border border-black/5 px-4 py-3 mb-4">
+      <div className="flex items-center justify-between bg-white rounded-2xl shadow-sm border border-black/5 px-5 py-4 mb-5">
         <button
           onClick={() => setMonth(prevMonth(month))}
           className="w-8 h-8 flex items-center justify-center rounded-lg border border-black/10 text-gray-500 hover:bg-gray-50 transition-colors"
@@ -137,24 +137,24 @@ export default function Budget() {
       </div>
 
       {/* Total summary */}
-      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm text-gray-600">合計予算</span>
-          <span className="font-bold text-gray-800">¥{formatJPY(totalBudget)}</span>
-        </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 mb-5">
         <div className="flex justify-between items-center mb-3">
-          <span className="text-sm text-gray-600">合計支出</span>
-          <span className={`font-bold ${totalActual > totalBudget ? 'text-[#b83232]' : 'text-[#2d5f3f]'}`}>
+          <span className="text-sm text-gray-500">合計予算</span>
+          <span className="text-lg font-bold text-gray-800">¥{formatJPY(totalBudget)}</span>
+        </div>
+        <div className="flex justify-between items-center mb-4">
+          <span className="text-sm text-gray-500">合計支出</span>
+          <span className={`text-lg font-bold ${totalActual > totalBudget ? 'text-[#b83232]' : 'text-[#2d5f3f]'}`}>
             ¥{formatJPY(totalActual)}
           </span>
         </div>
         {totalBudget > 0 && (
           <>
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
+            <div className="flex justify-between text-xs text-gray-400 mb-2">
               <span>使用率</span>
-              <span>{totalPct}%</span>
+              <span className="font-semibold">{totalPct}%</span>
             </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
                   totalPct > 100 ? 'bg-[#b83232]' : totalPct > 80 ? 'bg-yellow-400' : 'bg-[#2d5f3f]'
@@ -172,8 +172,8 @@ export default function Budget() {
           <div className="w-7 h-7 border-2 border-gray-200 border-t-[#2d5f3f] rounded-full animate-spin-custom" />
         </div>
       ) : (
-        <div className="space-y-3">
-          {EXPENSE_CATEGORIES.map((cat) => {
+        <div className="bg-white rounded-2xl shadow-sm border border-black/5 overflow-hidden">
+          {EXPENSE_CATEGORIES.map((cat, idx) => {
             const budget = budgets[cat] || 0;
             const actual = actuals[cat] || 0;
             const pct = budget > 0 ? Math.round((actual / budget) * 100) : 0;
@@ -182,16 +182,20 @@ export default function Budget() {
             const overBudget = budget > 0 && actual > budget;
 
             return (
-              <div key={cat} className="bg-white rounded-2xl shadow-sm border border-black/5 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-800">{cat}</span>
-                  <div className="flex items-center gap-1.5">
+              <div
+                key={cat}
+                className={`px-5 py-4 ${idx < EXPENSE_CATEGORIES.length - 1 ? 'border-b border-black/5' : ''}`}
+              >
+                {/* Category name + status */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-gray-800">{cat}</span>
+                  <div className="flex items-center gap-2">
                     {overBudget && (
-                      <span className="text-xs text-[#b83232] font-medium">超過</span>
+                      <span className="text-xs text-[#b83232] font-semibold bg-red-50 px-2 py-0.5 rounded-full">超過</span>
                     )}
-                    {budget > 0 && (
-                      <span className={`text-xs font-bold ${pct > 100 ? 'text-[#b83232]' : pct > 80 ? 'text-yellow-600' : 'text-[#2d5f3f]'}`}>
-                        {pct}%
+                    {actual > 0 && (
+                      <span className={`text-sm font-bold ${overBudget ? 'text-[#b83232]' : 'text-gray-700'}`}>
+                        ¥{formatJPY(actual)}
                       </span>
                     )}
                   </div>
@@ -199,7 +203,7 @@ export default function Budget() {
 
                 {/* Progress bar */}
                 {budget > 0 && (
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
                     <div
                       className={`h-full ${barColor} rounded-full transition-all`}
                       style={{ width: `${Math.min(pct, 100)}%` }}
@@ -207,39 +211,30 @@ export default function Budget() {
                   </div>
                 )}
 
+                {/* Budget input */}
                 <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">予算</p>
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">¥</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editValues[cat] ?? ''}
-                        onChange={(e) =>
-                          setEditValues((prev) => ({ ...prev, [cat]: e.target.value }))
-                        }
-                        onBlur={() => saveBudget(cat)}
-                        placeholder="0"
-                        className="w-full pl-6 pr-2 py-1.5 text-sm border border-black/15 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]"
-                      />
-                    </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0">予算</span>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">¥</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editValues[cat] ?? ''}
+                      onChange={(e) =>
+                        setEditValues((prev) => ({ ...prev, [cat]: e.target.value }))
+                      }
+                      onBlur={() => saveBudget(cat)}
+                      placeholder="未設定"
+                      className="w-full pl-7 pr-3 py-2 text-sm border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f] bg-gray-50"
+                    />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">実績</p>
-                    <p className={`text-sm font-bold py-1.5 ${actual > 0 ? 'text-gray-800' : 'text-gray-300'}`}>
-                      ¥{formatJPY(actual)}
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <button
-                      onClick={() => saveBudget(cat)}
-                      disabled={saving[cat]}
-                      className="mt-5 px-3 py-1.5 bg-[#2d5f3f] text-white rounded-lg text-xs font-medium disabled:opacity-50 hover:bg-[#24502f] transition-colors"
-                    >
-                      {saving[cat] ? '…' : '保存'}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => saveBudget(cat)}
+                    disabled={saving[cat]}
+                    className="px-3 py-2 bg-[#2d5f3f] text-white rounded-xl text-xs font-semibold disabled:opacity-50 flex-shrink-0"
+                  >
+                    {saving[cat] ? '…' : '保存'}
+                  </button>
                 </div>
               </div>
             );

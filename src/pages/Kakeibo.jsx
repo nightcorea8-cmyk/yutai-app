@@ -124,20 +124,20 @@ export default function Kakeibo() {
   const categories = txType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-base font-bold text-gray-800">家計簿</h1>
+    <div className="p-5 max-w-2xl mx-auto">
+      <div className="mb-5">
+        <h1 className="text-lg font-bold text-gray-800">家計簿</h1>
       </div>
 
       {/* User selector */}
-      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-3 mb-4 flex items-center gap-3">
-        <span className="text-xs text-gray-500 flex-shrink-0">入力者</span>
+      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-5 flex items-center gap-3">
+        <span className="text-sm text-gray-500 flex-shrink-0">入力者</span>
         <div className="flex gap-2">
           {USERS.map((u) => (
             <button
               key={u}
               onClick={() => setSelectedUser(u)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${
                 selectedUser === u
                   ? 'bg-[#2d5f3f] text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -150,15 +150,15 @@ export default function Kakeibo() {
       </div>
 
       {/* Quick Add Form */}
-      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-4 mb-4">
-        <h2 className="text-sm font-bold text-gray-800 mb-3">収支を追加</h2>
+      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 mb-5">
+        <h2 className="text-sm font-bold text-gray-800 mb-4">収支を追加</h2>
         <form onSubmit={handleSubmit}>
           {/* Type toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-black/10 mb-3">
+          <div className="flex rounded-xl overflow-hidden border border-black/10 mb-4">
             <button
               type="button"
               onClick={() => setTxType('expense')}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 py-3 text-sm font-semibold transition-colors ${
                 txType === 'expense' ? 'bg-[#b83232] text-white' : 'bg-gray-50 text-gray-500'
               }`}
             >
@@ -167,7 +167,7 @@ export default function Kakeibo() {
             <button
               type="button"
               onClick={() => setTxType('income')}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 py-3 text-sm font-semibold transition-colors ${
                 txType === 'income' ? 'bg-[#2d5f3f] text-white' : 'bg-gray-50 text-gray-500'
               }`}
             >
@@ -176,10 +176,10 @@ export default function Kakeibo() {
           </div>
 
           {/* Amount */}
-          <div className="mb-3">
-            <label className="block text-xs text-gray-500 mb-1 font-medium">金額 *</label>
+          <div className="mb-4">
+            <label className="block text-sm text-gray-500 mb-1.5 font-medium">金額 *</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">¥</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">¥</span>
               <input
                 type="number"
                 value={amount}
@@ -187,19 +187,19 @@ export default function Kakeibo() {
                 placeholder="0"
                 min="1"
                 required
-                className="w-full pl-7 pr-3 py-2.5 text-base border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f] focus:ring-offset-0"
+                className="w-full pl-9 pr-4 py-3.5 text-xl font-bold border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f] focus:ring-offset-0"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             {/* Category */}
             <div>
-              <label className="block text-xs text-gray-500 mb-1 font-medium">カテゴリ</label>
+              <label className="block text-sm text-gray-500 mb-1.5 font-medium">カテゴリ</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f] bg-white"
+                className="w-full px-3 py-3 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f] bg-white"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>{c}</option>
@@ -209,33 +209,33 @@ export default function Kakeibo() {
 
             {/* Date */}
             <div>
-              <label className="block text-xs text-gray-500 mb-1 font-medium">日付</label>
+              <label className="block text-sm text-gray-500 mb-1.5 font-medium">日付</label>
               <input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
-                className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]"
+                className="w-full px-3 py-3 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]"
               />
             </div>
           </div>
 
           {/* Description */}
-          <div className="mb-3">
-            <label className="block text-xs text-gray-500 mb-1 font-medium">メモ（任意）</label>
+          <div className="mb-4">
+            <label className="block text-sm text-gray-500 mb-1.5 font-medium">メモ（任意）</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="例：スーパーで買い物"
-              className="w-full px-3 py-2.5 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]"
+              className="w-full px-4 py-3 text-sm border border-black/15 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2d5f3f]"
             />
           </div>
 
           <button
             type="submit"
             disabled={submitting || !amount}
-            className="w-full py-2.5 bg-[#2d5f3f] text-white rounded-xl font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#24502f] transition-colors"
+            className="w-full py-3.5 bg-[#2d5f3f] text-white rounded-xl font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#24502f] transition-colors"
           >
             {submitting ? '保存中…' : '追加する'}
           </button>
@@ -261,15 +261,15 @@ export default function Kakeibo() {
       </div>
 
       {/* Monthly summary */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-5">
         {[
           { label: '収入', value: monthIncome, color: 'text-[#2d5f3f]' },
           { label: '支出', value: monthExpense, color: 'text-[#b83232]' },
           { label: '収支', value: monthBalance, color: monthBalance >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]' },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-white rounded-xl border border-black/5 shadow-sm p-3">
-            <p className="text-xs text-gray-400 mb-1">{label}</p>
-            <p className={`text-base font-bold ${color} leading-tight`}>
+          <div key={label} className="bg-white rounded-xl border border-black/5 shadow-sm p-4">
+            <p className="text-xs text-gray-400 mb-2">{label}</p>
+            <p className={`text-lg font-bold ${color} leading-tight`}>
               {value < 0 ? '-' : label === '収支' && value > 0 ? '+' : ''}¥{formatJPY(value)}
             </p>
           </div>
@@ -282,56 +282,56 @@ export default function Kakeibo() {
           <div className="w-7 h-7 border-2 border-gray-200 border-t-[#2d5f3f] rounded-full animate-spin-custom" />
         </div>
       ) : monthTx.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-10 h-10 mx-auto mb-2 text-gray-300">
+        <div className="text-center py-16 text-gray-400">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12 mx-auto mb-3 text-gray-300">
             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
           <p className="text-sm">この月の記録はありません</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {sortedDates.map((dateKey) => (
             <div key={dateKey}>
-              <div className="text-xs font-bold text-gray-400 mb-2">
+              <div className="text-xs font-bold text-gray-400 mb-3 px-1">
                 {dateKey.replace(/-/g, '/')}
               </div>
               <div className="space-y-2">
                 {byDate[dateKey].map((t) => (
                   <div
                     key={t.id}
-                    className="bg-white rounded-xl border border-black/5 shadow-sm px-4 py-3 flex items-center gap-3"
+                    className="bg-white rounded-2xl border border-black/5 shadow-sm px-4 py-4 flex items-center gap-3"
                   >
                     <div
-                      className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${
+                      className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center ${
                         t.type === 'income' ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]'
                       }`}
                     >
                       {t.type === 'income' ? (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="#2d5f3f" strokeWidth="2" className="w-4 h-4">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#2d5f3f" strokeWidth="2" className="w-5 h-5">
                           <path d="M12 19V5M5 12l7-7 7 7" />
                         </svg>
                       ) : (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="#b83232" strokeWidth="2" className="w-4 h-4">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#b83232" strokeWidth="2" className="w-5 h-5">
                           <path d="M12 5v14M19 12l-7 7-7-7" />
                         </svg>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-medium text-gray-600">{t.category}</span>
+                        <span className="text-sm font-semibold text-gray-700">{t.category}</span>
                         {t.addedBy && (
-                          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
                             {t.addedBy}
                           </span>
                         )}
                       </div>
                       {t.description && (
-                        <p className="text-xs text-gray-400 truncate mt-0.5">{t.description}</p>
+                        <p className="text-xs text-gray-400 truncate mt-1">{t.description}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span
-                        className={`text-sm font-bold ${
+                        className={`text-base font-bold ${
                           t.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'
                         }`}
                       >
@@ -339,7 +339,7 @@ export default function Kakeibo() {
                       </span>
                       <button
                         onClick={() => handleDelete(t.id)}
-                        className="text-gray-300 hover:text-[#b83232] transition-colors p-1"
+                        className="text-gray-300 hover:text-[#b83232] transition-colors p-2"
                         aria-label="削除"
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">

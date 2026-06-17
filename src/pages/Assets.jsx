@@ -111,15 +111,15 @@ export default function Assets() {
   }, []);
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-base font-bold text-gray-800">資産管理</h1>
+    <div className="p-5 max-w-2xl mx-auto">
+      <div className="mb-5">
+        <h1 className="text-lg font-bold text-gray-800">資産管理</h1>
       </div>
 
       {/* Total */}
-      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 mb-4">
-        <p className="text-xs text-gray-500 mb-1">資産総額</p>
-        <p className="text-3xl font-bold text-[#c47c2b]">¥{formatJPY(totalAssets)}</p>
+      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-6 mb-5">
+        <p className="text-sm text-gray-500 mb-2">資産総額</p>
+        <p className="text-4xl font-bold text-[#c47c2b]">¥{formatJPY(totalAssets)}</p>
 
         {/* Breakdown */}
         {byType.length > 0 && (
@@ -156,7 +156,7 @@ export default function Assets() {
       {!showForm && (
         <button
           onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); }}
-          className="w-full py-2.5 bg-[#2d5f3f] text-white rounded-xl font-medium text-sm hover:bg-[#24502f] transition-colors mb-4 flex items-center justify-center gap-2"
+          className="w-full py-3.5 bg-[#2d5f3f] text-white rounded-xl font-semibold text-base hover:bg-[#24502f] transition-colors mb-5 flex items-center justify-center gap-2"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -267,7 +267,7 @@ export default function Assets() {
             .map((asset) => (
               <div
                 key={asset.id}
-                className="bg-white rounded-xl border border-black/5 shadow-sm px-4 py-3 flex items-center gap-3"
+                className="bg-white rounded-2xl border border-black/5 shadow-sm px-5 py-4 flex items-center gap-3"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
