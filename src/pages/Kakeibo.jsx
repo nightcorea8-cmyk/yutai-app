@@ -181,6 +181,7 @@ export default function Kakeibo() {
 
   // ドリルダウン
   const [expandedTxId, setExpandedTxId] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const bankFileRef = useRef(null);
   const cardFileRef = useRef(null);
@@ -304,6 +305,7 @@ export default function Kakeibo() {
           addedBy: selectedUser,
           source: 'bank',
           isCardPayment: r.isCardPayment || false,
+          excludeFromBalance: r.excludeFromBalance || false,
           createdAt: serverTimestamp(),
         });
 
@@ -405,6 +407,24 @@ export default function Kakeibo() {
     }
   }, [cardCsvRows, transactions]);
 
+  const handleToggleExclude = useCallback(async (id, currentValue) => {
+    try {
+      await updateDoc(doc(db, 'transactions', id), { excludeFromBalance: !currentValue });
+    } catch (err) {
+      console.error('toggle exclude error:', err);
+    }
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    setShowDeleteConfirm(false);
+    try {
+      await Promise.all(monthTx.map((t) => deleteDoc(doc(db, 'transactions', t.id))));
+    } catch (err) {
+      console.error('bulk delete error:', err);
+      alert('一括削除に失敗しました');
+    }
+  }, [monthTx]);
+
   // リンク解除
   const handleUnlinkStatement = useCallback(async (txId, stmtId) => {
     try {
@@ -431,6 +451,9 @@ export default function Kakeibo() {
   const updateCardCategory = useCallback((idx, cat) => {
     setCardCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, category: cat } : r));
   }, []);
+  const toggleBankExclude = useCallback((idx) => {
+    setBankCsvRows((rows) => rows.map((r, i) => i === idx ? { ...r, excludeFromBalance: !r.excludeFromBalance } : r));
+  }, []);
 
   // 月集計
   const availableMonths = [...new Set(
@@ -438,8 +461,8 @@ export default function Kakeibo() {
   )].sort((a, b) => b.localeCompare(a));
 
   const monthTx = transactions.filter((t) => t.date?.startsWith(viewMonth));
-  const monthIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
-  const monthExpense = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
+  const monthIncome = monthTx.filter((t) => t.type === 'income' && !t.excludeFromBalance).reduce((s, t) => s + (t.amount || 0), 0);
+  const monthExpense = monthTx.filter((t) => t.type === 'expense' && !t.excludeFromBalance).reduce((s, t) => s + (t.amount || 0), 0);
   const monthBalance = monthIncome - monthExpense;
 
   const byDate = {};
@@ -473,28 +496,26 @@ export default function Kakeibo() {
       <input ref={bankFileRef} type="file" accept=".csv" className="hidden" onChange={handleBankFile} />
       <input ref={cardFileRef} type="file" accept=".csv" className="hidden" onChange={handleCardFile} />
 
-      <div className="grid grid-cols-2 gap-3 mb-2">
+      <div className="flex gap-2 mb-3">
         <button
           onClick={() => { setCsvError(''); bankFileRef.current?.click(); }}
-          className="py-4 bg-white border-2 border-dashed border-[#2d5f3f]/40 text-[#2d5f3f] rounded-xl font-semibold text-sm hover:bg-[#2d5f3f]/5 transition-colors flex flex-col items-center gap-1.5"
+          className="flex-1 py-2 bg-white border border-dashed border-[#2d5f3f]/40 text-[#2d5f3f] rounded-xl text-xs font-medium hover:bg-[#2d5f3f]/5 transition-colors flex items-center justify-center gap-1.5"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 flex-shrink-0">
             <rect x="2" y="5" width="20" height="14" rx="2" />
             <path d="M2 10h20" />
           </svg>
-          口座明細
-          <span className="text-xs opacity-60 font-normal">CSVインポート</span>
+          口座明細 CSV
         </button>
         <button
           onClick={() => { setCsvError(''); cardFileRef.current?.click(); }}
-          className="py-4 bg-white border-2 border-dashed border-[#c47c2b]/40 text-[#c47c2b] rounded-xl font-semibold text-sm hover:bg-[#c47c2b]/5 transition-colors flex flex-col items-center gap-1.5"
+          className="flex-1 py-2 bg-white border border-dashed border-[#c47c2b]/40 text-[#c47c2b] rounded-xl text-xs font-medium hover:bg-[#c47c2b]/5 transition-colors flex items-center justify-center gap-1.5"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 flex-shrink-0">
             <rect x="1" y="4" width="22" height="16" rx="2" />
             <line x1="1" y1="10" x2="23" y2="10" />
           </svg>
-          カード明細
-          <span className="text-xs opacity-60 font-normal">CSVインポート</span>
+          カード明細 CSV
         </button>
       </div>
 
@@ -564,7 +585,7 @@ export default function Kakeibo() {
       </div>
 
       {/* 月ナビゲーター */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <button
           onClick={() => setViewMonth((m) => shiftMonth(m, -1))}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 active:bg-black/10 transition-colors"
@@ -592,6 +613,16 @@ export default function Kakeibo() {
           </svg>
         </button>
       </div>
+      <div className="flex justify-end mb-3">
+        {monthTx.length > 0 && (
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-xs text-gray-300 hover:text-[#b83232] transition-colors"
+          >
+            一括削除
+          </button>
+        )}
+      </div>
 
       {/* 月サマリー */}
       <div className="grid grid-cols-3 gap-3 mb-5">
@@ -602,7 +633,7 @@ export default function Kakeibo() {
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white rounded-xl border border-black/5 shadow-sm p-4">
             <p className="text-xs text-gray-400 mb-2">{label}</p>
-            <p className={`text-lg font-bold ${color} leading-tight`}>
+            <p className={`text-sm font-bold ${color} leading-tight whitespace-nowrap overflow-hidden text-ellipsis`}>
               {value < 0 ? '-' : label === '収支' && value > 0 ? '+' : ''}¥{formatJPY(value)}
             </p>
           </div>
@@ -659,26 +690,41 @@ export default function Kakeibo() {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-700">{t.category}</span>
-                            {t.source === 'bank' && (
-                              <span className="text-xs bg-blue-50 text-blue-400 px-1.5 py-0.5 rounded-full">口座</span>
-                            )}
-                            {linkedStatement && (
-                              <span className="text-xs bg-[#c47c2b]/10 text-[#c47c2b] px-1.5 py-0.5 rounded-full">明細リンク済</span>
-                            )}
-                          </div>
-                          {t.description && (
-                            <p className="text-xs text-gray-400 truncate mt-0.5">{t.description}</p>
+                          <p className={`text-sm font-semibold truncate ${t.excludeFromBalance ? 'text-gray-300 line-through' : 'text-gray-700'}`}>
+                            {t.description || 'ー'}
+                          </p>
+                          {(linkedStatement || t.excludeFromBalance) && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {linkedStatement && (
+                                <span className="text-xs bg-[#c47c2b]/10 text-[#c47c2b] px-1.5 py-0.5 rounded-full">明細リンク済</span>
+                              )}
+                              {t.excludeFromBalance && (
+                                <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full">収支除外</span>
+                              )}
+                            </div>
                           )}
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <span className={`text-base font-bold ${
-                            t.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'
+                          <span className={`text-sm font-bold whitespace-nowrap ${
+                            t.excludeFromBalance ? 'text-gray-300' : t.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'
                           }`}>
                             {t.type === 'income' ? '+' : '-'}¥{formatJPY(t.amount)}
                           </span>
+                          <button
+                            onClick={() => handleToggleExclude(t.id, t.excludeFromBalance)}
+                            className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors flex-shrink-0 ${
+                              t.excludeFromBalance
+                                ? 'bg-gray-100 border-gray-300 text-gray-400'
+                                : 'border-gray-200 text-gray-300 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                            title={t.excludeFromBalance ? '収支に含める' : '収支から除外'}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                              <circle cx="12" cy="12" r="9" />
+                              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                            </svg>
+                          </button>
                           {linkedStatement && (
                             <button
                               onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
@@ -822,6 +868,16 @@ export default function Kakeibo() {
                         </select>
                       </div>
                     )}
+                    <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer w-fit">
+                      <input
+                        type="checkbox"
+                        checked={row.excludeFromBalance || false}
+                        onChange={() => toggleBankExclude(idx)}
+                        disabled={!row.selected}
+                        className="w-3.5 h-3.5 rounded border-gray-300 accent-gray-400"
+                      />
+                      <span className="text-xs text-gray-400">収支から除外</span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -833,6 +889,33 @@ export default function Kakeibo() {
               className="w-full py-3.5 bg-[#2d5f3f] text-white rounded-xl font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#24502f] transition-colors">
               {csvImporting ? 'インポート中…' : `${bankSelectedCount}件をインポート`}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 一括削除確認モーダル */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-5">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-base font-bold text-gray-800 mb-2">一括削除</h3>
+            <p className="text-sm text-gray-500 mb-5">
+              {getMonthLabel(viewMonth)}の記録 {monthTx.length}件をすべて削除しますか？<br />
+              <span className="text-xs text-[#b83232]">この操作は元に戻せません。</span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-3 border border-black/10 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="flex-1 py-3 bg-[#b83232] text-white rounded-xl text-sm font-medium hover:bg-[#9e2a2a] transition-colors"
+              >
+                削除する
+              </button>
+            </div>
           </div>
         </div>
       )}
