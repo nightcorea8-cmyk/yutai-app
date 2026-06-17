@@ -181,11 +181,15 @@ export default function Kakeibo() {
 
   // 口座ベースのトランザクション
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
-      setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTransactions(docs);
       setLoading(false);
-    }, () => { setLoading(false); });
+    }, (err) => {
+      console.error('transactions fetch error:', err);
+      setLoading(false);
+    });
     return unsub;
   }, []);
 
@@ -200,6 +204,15 @@ export default function Kakeibo() {
   useEffect(() => {
     localStorage.setItem('selectedUser', selectedUser);
   }, [selectedUser]);
+
+  // データロード後、表示月にデータがなければ最新データのある月へ自動移動
+  useEffect(() => {
+    if (loading || transactions.length === 0) return;
+    const months = [...new Set(transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+    if (months.length > 0 && !transactions.some((t) => t.date?.startsWith(viewMonth))) {
+      setViewMonth(months[0]);
+    }
+  }, [loading, transactions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setCategory(txType === 'income' ? '給与' : 'その他');
