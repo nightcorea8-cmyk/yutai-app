@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Noto Sans JP', sans-serif;
+  }
+  body {
+    background-color: #f5f0eb;
+    color: #1a1a18;
+    min-height: 100dvh;
+  }
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes spin-custom {
+  to { transform: rotate(360deg); }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1s infinite;
+}
+
+.animate-spin-custom {
+  animation: spin-custom 0.7s linear infinite;
+}
