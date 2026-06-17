@@ -38,6 +38,6 @@ ${context ? `【ユーザーの現在の家計データ】\n${context}` : ''}`;
     res.json({ content: text });
   } catch (err) {
     console.error('Gemini error:', err.message);
-    res.status(500).json({ error: 'AI response failed' });
+    res.status(500).json({ error: err.message || 'AI response failed' });
   }
 }
