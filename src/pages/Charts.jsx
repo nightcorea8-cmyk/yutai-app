@@ -141,7 +141,7 @@ export default function Charts() {
   // タグ別（同じタグを合算）
   const tagMap = {};
   assets.filter((a) => (a.amount || 0) > 0).forEach((a) => {
-    const tag = (a.tag || '').trim() || '未分類';
+    const tag = a.source === 'rakuten' ? '楽天証券' : ((a.tag || '').trim() || '未分類');
     tagMap[tag] = (tagMap[tag] || 0) + (a.amount || 0);
   });
   const tagPieData = Object.entries(tagMap)

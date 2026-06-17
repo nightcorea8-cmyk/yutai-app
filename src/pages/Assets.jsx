@@ -316,6 +316,7 @@ export default function Assets() {
         portfolioId = existing.portfolioId;
         await updateDoc(doc(db, 'assets', existing.id), {
           amount: pendingTotalJPY,
+          tag: '楽天証券',
           updatedAt: serverTimestamp(),
         });
       } else {
@@ -327,6 +328,7 @@ export default function Assets() {
           name,
           type: 'securities',
           amount: pendingTotalJPY,
+          tag: '楽天証券',
           order: maxOrder,
           createdAt: serverTimestamp(),
         });
