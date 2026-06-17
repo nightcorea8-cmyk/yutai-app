@@ -20,6 +20,7 @@ export default function FPChat() {
   const [transactions, setTransactions] = useState([]);
   const [cardStatements, setCardStatements] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [portfolios, setPortfolios] = useState({});
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -28,6 +29,11 @@ export default function FPChat() {
       onSnapshot(collection(db, 'transactions'), (s) => setTransactions(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => {}),
       onSnapshot(collection(db, 'cardStatements'), (s) => setCardStatements(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => {}),
       onSnapshot(collection(db, 'assets'), (s) => setAssets(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => {}),
+      onSnapshot(collection(db, 'stockPortfolio'), (s) => {
+        const map = {};
+        s.docs.forEach((d) => { map[d.id] = d.data(); });
+        setPortfolios(map);
+      }, () => {}),
     ];
     return () => unsubs.forEach((u) => u());
   }, []);
@@ -66,12 +72,39 @@ export default function FPChat() {
     const sec = assets.filter((a) => a.type !== 'bank').reduce((s, a) => s + (a.amount || 0), 0);
     const rate = last.income > 0 ? Math.round((last.balance / last.income) * 100) : null;
 
-    return [
+    const lines = [
       `先月（${lastMonth.replace('-', '年')}月）: 収入¥${formatJPY(last.income)} 支出¥${formatJPY(last.expense)} 収支¥${formatJPY(last.balance)}${rate !== null ? ` 貯蓄率${rate}%` : ''}`,
       `今月（${thisMonth.replace('-', '年')}月）: 収入¥${formatJPY(cur.income)} 支出¥${formatJPY(cur.expense)} 収支¥${formatJPY(cur.balance)}`,
       `総資産¥${formatJPY(total)}（銀行¥${formatJPY(bank)} 証券¥${formatJPY(sec)}）`,
-    ].join('\n');
-  }, [transactions, cardStatements, assets]);
+    ];
+
+    const bankAssets = assets.filter((a) => a.type === 'bank');
+    if (bankAssets.length > 0) {
+      lines.push('【銀行口座】');
+      bankAssets.forEach((a) => {
+        lines.push(`  ${a.name}: ¥${formatJPY(a.amount || 0)}`);
+      });
+    }
+
+    const allHoldings = Object.values(portfolios).flatMap((p) => p.items || []);
+    if (allHoldings.length > 0) {
+      const byType = {};
+      allHoldings.forEach((item) => {
+        if (!byType[item.type]) byType[item.type] = [];
+        byType[item.type].push(item);
+      });
+      lines.push('【株式・投資信託ポートフォリオ】');
+      Object.entries(byType).forEach(([type, items]) => {
+        lines.push(`  ${type}:`);
+        items.forEach((item) => {
+          const pnl = item.unrealizedPnL >= 0 ? `+¥${formatJPY(item.unrealizedPnL)}` : `-¥${formatJPY(Math.abs(item.unrealizedPnL))}`;
+          lines.push(`    ${item.name}: ¥${formatJPY(item.currentValueJPY)}（評価損益${pnl}）`);
+        });
+      });
+    }
+
+    return lines.join('\n');
+  }, [transactions, cardStatements, assets, portfolios]);
 
   const send = useCallback(async (text) => {
     const content = (text ?? input).trim();
