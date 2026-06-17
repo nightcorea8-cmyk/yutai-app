@@ -8,6 +8,7 @@ import {
 const INCOME_CATEGORIES = ['給与', 'ボーナス', '振込', '副収入', 'その他'];
 const EXPENSE_CATEGORIES = ['食費', '外食', '日用品', '交通費', '娯楽', '医療', '教育', '住居', '光熱費', '通信費', '服飾', '保険', '税金', 'その他'];
 const USERS = ['ひゅうご', 'なる'];
+const WEEK_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 function formatJPY(n) {
   return new Intl.NumberFormat('ja-JP').format(Math.abs(n));
@@ -51,12 +52,10 @@ function parseCSVLine(line) {
 async function readFileAsText(file) {
   const buffer = await file.arrayBuffer();
   const jpRe = /[　-鿿＀-￯]/;
-  // UTF-8を先に試す（fatal:trueで不正バイト列は即失敗）
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
     if (jpRe.test(text)) return text;
   } catch {}
-  // Shift-JISを試す（楽天銀行などの口座明細）
   try {
     const text = new TextDecoder('shift-jis').decode(buffer);
     if (jpRe.test(text)) return text;
@@ -64,7 +63,6 @@ async function readFileAsText(file) {
   return new TextDecoder('utf-8').decode(buffer);
 }
 
-// 口座明細パーサー: 取引日(YYYYMMDD), 入出金(円), 残高(円), 入出金内容
 function parseBankCSV(text) {
   const lines = text.split(/\r?\n/);
   const rows = [];
@@ -90,7 +88,6 @@ function parseBankCSV(text) {
     const date = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
     const isExpense = amount < 0;
     const absAmount = Math.abs(amount);
-    // カード払いを検出（ーｰ－−-など様々なダッシュ文字に対応）
     const isCardPayment = /カ[ーｰ－−\-]ト゛?|カード|CARD/i.test(description);
 
     rows.push({
@@ -106,7 +103,6 @@ function parseBankCSV(text) {
   return rows;
 }
 
-// カード明細パーサー: 利用日, 利用店名, 利用者, 支払方法, 利用金額, ...
 function parseCardCSV(text) {
   const lines = text.split(/\r?\n/);
   const rows = [];
@@ -154,7 +150,6 @@ export default function Kakeibo() {
   const [cardStatements, setCardStatements] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 手動入力フォーム
   const [showManualForm, setShowManualForm] = useState(false);
   const [txType, setTxType] = useState('expense');
   const [amount, setAmount] = useState('');
@@ -172,21 +167,21 @@ export default function Kakeibo() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  // CSV
+  const [viewMode, setViewMode] = useState('list'); // 'list' | 'calendar'
+  const [selectedDay, setSelectedDay] = useState(null);
+
   const [bankCsvRows, setBankCsvRows] = useState(null);
   const [cardCsvRows, setCardCsvRows] = useState(null);
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvError, setCsvError] = useState('');
   const [importToast, setImportToast] = useState('');
 
-  // ドリルダウン
   const [expandedTxId, setExpandedTxId] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const bankFileRef = useRef(null);
   const cardFileRef = useRef(null);
 
-  // 口座ベースのトランザクション
   useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
@@ -200,7 +195,6 @@ export default function Kakeibo() {
     return unsub;
   }, []);
 
-  // カード明細（収支計算に含めない）
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'cardStatements'), (snap) => {
       setCardStatements(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -212,7 +206,10 @@ export default function Kakeibo() {
     localStorage.setItem('selectedUser', selectedUser);
   }, [selectedUser]);
 
-  // 未リンクのカード明細と口座取引を自動再リンク
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [viewMonth]);
+
   const autoLinkedRef = useRef(false);
   useEffect(() => {
     if (loading || autoLinkedRef.current) return;
@@ -231,7 +228,6 @@ export default function Kakeibo() {
     });
   }, [loading, cardStatements, transactions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // データロード後、表示月にデータがなければ最新データのある月へ自動移動
   useEffect(() => {
     if (loading || transactions.length === 0) return;
     const months = [...new Set(transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
@@ -244,7 +240,6 @@ export default function Kakeibo() {
     setCategory(txType === 'income' ? '給与' : 'その他');
   }, [txType]);
 
-  // 手動入力
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
@@ -281,7 +276,6 @@ export default function Kakeibo() {
     }
   }, []);
 
-  // 口座CSVファイル選択
   const handleBankFile = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -294,7 +288,6 @@ export default function Kakeibo() {
         setCsvError('有効なデータが見つかりません。口座明細のCSVを選択してください。');
         return;
       }
-      // 重複チェック（同じ日付・金額・摘要がすでにある行はデフォルト非選択）
       const marked = rows.map((r) => {
         const dup = transactions.some(
           (t) => t.source === 'bank' && t.date === r.date && t.amount === r.amount && t.description === r.description
@@ -308,7 +301,6 @@ export default function Kakeibo() {
     }
   }, [transactions]);
 
-  // 口座CSVインポート実行
   const handleBankImport = useCallback(async () => {
     const toImport = bankCsvRows.filter((r) => r.selected);
     if (!toImport.length) return;
@@ -328,7 +320,6 @@ export default function Kakeibo() {
           createdAt: serverTimestamp(),
         });
 
-        // 支出行：金額一致するカード明細と自動リンク
         if (r.type === 'expense') {
           const match = cardStatements.find(
             (s) => s.totalAmount === r.amount && !s.linkedTransactionId
@@ -354,7 +345,6 @@ export default function Kakeibo() {
     }
   }, [bankCsvRows, cardStatements, selectedUser, viewMonth]);
 
-  // カードCSVファイル選択
   const handleCardFile = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -367,7 +357,6 @@ export default function Kakeibo() {
         setCsvError('有効なデータが見つかりません。カード明細のCSVを選択してください。');
         return;
       }
-      // 合計金額が一致する既存のカード明細があれば重複警告
       const total = rows.reduce((s, r) => s + r.amount, 0);
       const dup = cardStatements.some((s) => s.totalAmount === total);
       if (dup) {
@@ -381,7 +370,6 @@ export default function Kakeibo() {
     }
   }, [cardStatements]);
 
-  // カードCSVインポート実行（cardStatementsへ保存）
   const handleCardImport = useCallback(async () => {
     const toImport = cardCsvRows.filter((r) => r.selected);
     if (!toImport.length) return;
@@ -404,7 +392,6 @@ export default function Kakeibo() {
         importedAt: serverTimestamp(),
       });
 
-      // 金額一致する口座の支出行と自動リンク
       const match = transactions.find(
         (t) => t.source === 'bank' && t.type === 'expense' && t.amount === totalAmount && !t.cardStatementId
       );
@@ -446,7 +433,6 @@ export default function Kakeibo() {
     }
   }, [transactions, viewMonth]);
 
-  // リンク解除
   const handleUnlinkStatement = useCallback(async (txId, stmtId) => {
     try {
       await updateDoc(doc(db, 'transactions', txId), { cardStatementId: null });
@@ -492,7 +478,6 @@ export default function Kakeibo() {
     }
   }, [cardStatements]);
 
-  // 月集計
   const availableMonths = [...new Set(
     transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean)
   )].sort((a, b) => b.localeCompare(a));
@@ -521,12 +506,31 @@ export default function Kakeibo() {
   });
   const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
 
+  // カレンダー用データ（購入日ベース：口座連動トランザクションを除外しカード明細の個別行を使用）
+  const calendarData = {};
+  monthTx.filter((t) => !t.cardStatementId).forEach((t) => {
+    if (!t.date) return;
+    if (!calendarData[t.date]) calendarData[t.date] = [];
+    calendarData[t.date].push({ id: t.id, kind: 'tx', description: t.description || 'ー', amount: t.amount, type: t.type, excludeFromBalance: t.excludeFromBalance });
+  });
+  cardStatements.forEach((stmt) => {
+    (stmt.items || []).forEach((item, idx) => {
+      if (!item.date?.startsWith(viewMonth)) return;
+      if (!calendarData[item.date]) calendarData[item.date] = [];
+      calendarData[item.date].push({ id: `${stmt.id}_${idx}`, kind: 'card', description: item.merchant || 'ー', amount: item.amount, type: 'expense', excludeFromBalance: item.excludeFromBalance, addedBy: item.addedBy });
+    });
+  });
+
+  const [calYear, calMonthNum] = viewMonth.split('-').map(Number);
+  const calFirstDay = new Date(calYear, calMonthNum - 1, 1).getDay();
+  const calDaysInMonth = new Date(calYear, calMonthNum, 0).getDate();
+  const todayDateStr = todayStr();
+
   const bankSelectedCount = bankCsvRows?.filter((r) => r.selected).length || 0;
   const cardSelectedCount = cardCsvRows?.filter((r) => r.selected).length || 0;
 
   return (
     <div className="p-5 max-w-2xl mx-auto">
-      {/* 成功トースト */}
       {importToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#2d5f3f] text-white text-sm font-medium px-5 py-3 rounded-2xl shadow-lg flex items-center gap-2 max-w-xs text-center">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 flex-shrink-0">
@@ -661,7 +665,20 @@ export default function Kakeibo() {
           </svg>
         </button>
       </div>
-      <div className="flex justify-end mb-3">
+
+      {/* ビュー切り替え + 一括削除 */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          {[['list', 'リスト'], ['calendar', 'カレンダー']].map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors ${viewMode === mode ? 'bg-white text-gray-800 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {monthTx.length > 0 && (
           <button
             onClick={() => setShowDeleteConfirm(true)}
@@ -688,170 +705,273 @@ export default function Kakeibo() {
         ))}
       </div>
 
-      {/* トランザクション一覧 */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-7 h-7 border-2 border-gray-200 border-t-[#2d5f3f] rounded-full animate-spin-custom" />
-        </div>
-      ) : monthTx.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12 mx-auto mb-3 text-gray-300">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          <p className="text-sm">この月の記録はありません</p>
-          <p className="text-xs mt-1 text-gray-300">口座明細をインポートしてください</p>
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {sortedDates.map((dateKey) => (
-            <div key={dateKey}>
-              <div className="text-xs font-bold text-gray-400 mb-3 px-1">{dateKey.replace(/-/g, '/')}</div>
+      {/* カレンダービュー */}
+      {viewMode === 'calendar' && !loading && (
+        <div className="bg-white rounded-2xl border border-black/5 shadow-sm p-4 mb-4">
+          {/* 曜日ヘッダー */}
+          <div className="grid grid-cols-7 mb-1">
+            {WEEK_LABELS.map((label, i) => (
+              <div key={label} className={`text-center text-xs font-medium py-1 ${i === 0 ? 'text-[#b83232]' : i === 6 ? 'text-[#3b82f6]' : 'text-gray-400'}`}>
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* 日付セル */}
+          <div className="grid grid-cols-7 gap-y-1">
+            {Array.from({ length: calFirstDay }, (_, i) => <div key={`pad-${i}`} />)}
+            {Array.from({ length: calDaysInMonth }, (_, i) => {
+              const dayNum = i + 1;
+              const dateStr = `${viewMonth}-${String(dayNum).padStart(2, '0')}`;
+              const entries = calendarData[dateStr] || [];
+              const hasIncome = entries.some((e) => e.type === 'income');
+              const hasExpense = entries.some((e) => e.type === 'expense');
+              const isToday = dateStr === todayDateStr;
+              const isSelected = dateStr === selectedDay;
+              const dow = (calFirstDay + i) % 7;
+
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => entries.length > 0 && setSelectedDay(isSelected ? null : dateStr)}
+                  disabled={entries.length === 0}
+                  className={`flex flex-col items-center py-1.5 rounded-xl transition-colors ${
+                    isSelected ? 'bg-[#e8f0eb]' : entries.length > 0 ? 'hover:bg-gray-50 active:bg-gray-100 cursor-pointer' : 'cursor-default'
+                  }`}
+                >
+                  <span className={`text-[11px] leading-none mb-1 w-5 h-5 flex items-center justify-center rounded-full ${
+                    isToday
+                      ? 'bg-[#2d5f3f] text-white font-bold'
+                      : isSelected
+                      ? 'text-[#2d5f3f] font-bold'
+                      : dow === 0
+                      ? 'text-[#b83232]'
+                      : dow === 6
+                      ? 'text-[#3b82f6]'
+                      : 'text-gray-700'
+                  }`}>
+                    {dayNum}
+                  </span>
+                  <div className="h-2 flex items-center gap-0.5">
+                    {hasExpense && <div className="w-1.5 h-1.5 rounded-full bg-[#b83232]" />}
+                    {hasIncome && <div className="w-1.5 h-1.5 rounded-full bg-[#2d5f3f]" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 選択日の明細 */}
+          {selectedDay && calendarData[selectedDay] && (
+            <div className="mt-4 border-t border-black/5 pt-3">
+              <p className="text-xs font-bold text-gray-400 mb-2.5">{selectedDay.replace(/-/g, '/')}</p>
               <div className="space-y-2">
-                {byDate[dateKey].map((t) => {
-                  const linkedStatement = t.cardStatementId
-                    ? cardStatements.find((s) => s.id === t.cardStatementId)
-                    : null;
-                  const isExpanded = expandedTxId === t.id;
-
-                  return (
-                    <div key={t.id}>
-                      <div className={`bg-white rounded-2xl border shadow-sm px-4 py-4 flex items-center gap-3 ${
-                        isExpanded ? 'border-[#c47c2b]/20 rounded-b-none' : 'border-black/5'
-                      }`}>
-                        <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center ${
-                          t.isCardPayment ? 'bg-[#fdf3e3]' : t.type === 'income' ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]'
-                        }`}>
-                          {t.isCardPayment ? (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#c47c2b" strokeWidth="2" className="w-5 h-5">
-                              <rect x="1" y="4" width="22" height="16" rx="2" />
-                              <line x1="1" y1="10" x2="23" y2="10" />
-                            </svg>
-                          ) : t.type === 'income' ? (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#2d5f3f" strokeWidth="2" className="w-5 h-5">
-                              <path d="M12 19V5M5 12l7-7 7 7" />
-                            </svg>
-                          ) : (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#b83232" strokeWidth="2" className="w-5 h-5">
-                              <path d="M12 5v14M19 12l-7 7-7-7" />
-                            </svg>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-semibold truncate ${t.excludeFromBalance ? 'text-gray-300 line-through' : 'text-gray-700'}`}>
-                            {t.description || 'ー'}
-                          </p>
-                          {(linkedStatement || t.excludeFromBalance) && (
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              {linkedStatement && (
-                                <span className="text-xs bg-[#c47c2b]/10 text-[#c47c2b] px-1.5 py-0.5 rounded-full">明細リンク済</span>
-                              )}
-                              {t.excludeFromBalance && (
-                                <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full">収支除外</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <span className={`text-sm font-bold whitespace-nowrap ${
-                            t.excludeFromBalance ? 'text-gray-300' : t.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'
-                          }`}>
-                            {t.type === 'income' ? '+' : '-'}¥{formatJPY(t.amount)}
-                          </span>
-                          <button
-                            onClick={() => handleToggleExclude(t.id, t.excludeFromBalance)}
-                            className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors flex-shrink-0 ${
-                              t.excludeFromBalance
-                                ? 'bg-gray-100 border-gray-300 text-gray-400'
-                                : 'border-gray-200 text-gray-300 hover:border-gray-300 hover:text-gray-400'
-                            }`}
-                            title={t.excludeFromBalance ? '収支に含める' : '収支から除外'}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-                              <circle cx="12" cy="12" r="9" />
-                              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-                            </svg>
-                          </button>
-                          {linkedStatement && (
-                            <button
-                              onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
-                              className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
-                                isExpanded ? 'bg-[#c47c2b] text-white' : 'text-[#c47c2b] border border-[#c47c2b]/30'
-                              }`}
-                              aria-label="カード明細を展開"
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                                className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                                <polyline points="6 9 12 15 18 9" />
-                              </svg>
-                            </button>
-                          )}
-                          <button onClick={() => handleDelete(t.id)}
-                            className="text-gray-300 hover:text-[#b83232] transition-colors p-1" aria-label="削除">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* カード明細ドリルダウン */}
-                      {isExpanded && linkedStatement && (
-                        <div className="bg-[#fdf8f3] rounded-b-2xl border border-t-0 border-[#c47c2b]/20 overflow-hidden">
-                          <div className="px-4 py-2 border-b border-[#c47c2b]/10 flex items-center justify-between">
-                            <p className="text-xs font-semibold text-[#c47c2b]">
-                              カード明細 {linkedStatement.items?.length}件
-                            </p>
-                            <div className="flex items-center gap-3">
-                              {(() => {
-                                const excluded = (linkedStatement.items || []).filter((i) => i.excludeFromBalance).reduce((s, i) => s + (i.amount || 0), 0);
-                                const effective = linkedStatement.totalAmount - excluded;
-                                return excluded > 0
-                                  ? <p className="text-xs text-[#c47c2b]">有効 ¥{formatJPY(effective)} <span className="text-gray-300">(除外 ¥{formatJPY(excluded)})</span></p>
-                                  : <p className="text-xs text-[#c47c2b]">合計 ¥{formatJPY(linkedStatement.totalAmount)}</p>;
-                              })()}
-                            </div>
-                          </div>
-                          <div className="divide-y divide-[#c47c2b]/8">
-                            {(linkedStatement.items || []).map((item, i) => (
-                              <div key={i} className={`px-4 py-2.5 flex items-center justify-between gap-2 ${item.excludeFromBalance ? 'opacity-50' : ''}`}>
-                                <div className="flex-1 min-w-0">
-                                  <p className={`text-xs font-medium truncate ${item.excludeFromBalance ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{item.merchant}</p>
-                                  <p className="text-xs text-gray-400">
-                                    {item.date.replace(/-/g, '/')} · {item.addedBy}
-                                  </p>
-                                </div>
-                                <span className={`text-sm font-semibold flex-shrink-0 ${item.excludeFromBalance ? 'text-gray-300 line-through' : 'text-[#b83232]'}`}>
-                                  ¥{formatJPY(item.amount)}
-                                </span>
-                                <button
-                                  onClick={() => handleToggleCardItemExclude(linkedStatement.id, i, item.excludeFromBalance)}
-                                  className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors flex-shrink-0 ${
-                                    item.excludeFromBalance
-                                      ? 'bg-gray-100 border-gray-300 text-gray-400'
-                                      : 'border-gray-200 text-gray-300 hover:border-gray-300 hover:text-gray-400'
-                                  }`}
-                                  title={item.excludeFromBalance ? '収支に含める' : '収支から除外'}
-                                >
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
-                                    <circle cx="12" cy="12" r="9" />
-                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-                                  </svg>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                {[...calendarData[selectedDay]].sort((a, b) => {
+                  if (a.type !== b.type) return a.type === 'income' ? -1 : 1;
+                  return b.amount - a.amount;
+                }).map((entry) => (
+                  <div key={entry.id} className="flex items-center gap-2.5">
+                    <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center ${
+                      entry.kind === 'card' ? 'bg-[#fdf3e3]' : entry.type === 'income' ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]'
+                    }`}>
+                      {entry.kind === 'card' ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#c47c2b" strokeWidth="2" className="w-3.5 h-3.5">
+                          <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
+                        </svg>
+                      ) : entry.type === 'income' ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#2d5f3f" strokeWidth="2" className="w-3.5 h-3.5">
+                          <path d="M12 19V5M5 12l7-7 7 7" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#b83232" strokeWidth="2" className="w-3.5 h-3.5">
+                          <path d="M12 5v14M19 12l-7 7-7-7" />
+                        </svg>
                       )}
                     </div>
-                  );
-                })}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm truncate ${entry.excludeFromBalance ? 'text-gray-300 line-through' : 'text-gray-700'}`}>
+                        {entry.description}
+                      </p>
+                      {entry.addedBy && <p className="text-xs text-gray-400">{entry.addedBy}</p>}
+                    </div>
+                    <span className={`text-sm font-bold whitespace-nowrap flex-shrink-0 ${
+                      entry.excludeFromBalance ? 'text-gray-300' : entry.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'
+                    }`}>
+                      {entry.type === 'income' ? '+' : '-'}¥{formatJPY(entry.amount)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
+          )}
         </div>
+      )}
+
+      {/* リストビュー */}
+      {viewMode === 'list' && (
+        loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-7 h-7 border-2 border-gray-200 border-t-[#2d5f3f] rounded-full animate-spin-custom" />
+          </div>
+        ) : monthTx.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12 mx-auto mb-3 text-gray-300">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-sm">この月の記録はありません</p>
+            <p className="text-xs mt-1 text-gray-300">口座明細をインポートしてください</p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {sortedDates.map((dateKey) => (
+              <div key={dateKey}>
+                <div className="text-xs font-bold text-gray-400 mb-3 px-1">{dateKey.replace(/-/g, '/')}</div>
+                <div className="space-y-2">
+                  {byDate[dateKey].map((t) => {
+                    const linkedStatement = t.cardStatementId
+                      ? cardStatements.find((s) => s.id === t.cardStatementId)
+                      : null;
+                    const isExpanded = expandedTxId === t.id;
+
+                    return (
+                      <div key={t.id}>
+                        <div className={`bg-white rounded-2xl border shadow-sm px-4 py-4 flex items-center gap-3 ${
+                          isExpanded ? 'border-[#c47c2b]/20 rounded-b-none' : 'border-black/5'
+                        }`}>
+                          <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center ${
+                            t.isCardPayment ? 'bg-[#fdf3e3]' : t.type === 'income' ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]'
+                          }`}>
+                            {t.isCardPayment ? (
+                              <svg viewBox="0 0 24 24" fill="none" stroke="#c47c2b" strokeWidth="2" className="w-5 h-5">
+                                <rect x="1" y="4" width="22" height="16" rx="2" />
+                                <line x1="1" y1="10" x2="23" y2="10" />
+                              </svg>
+                            ) : t.type === 'income' ? (
+                              <svg viewBox="0 0 24 24" fill="none" stroke="#2d5f3f" strokeWidth="2" className="w-5 h-5">
+                                <path d="M12 19V5M5 12l7-7 7 7" />
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 24 24" fill="none" stroke="#b83232" strokeWidth="2" className="w-5 h-5">
+                                <path d="M12 5v14M19 12l-7 7-7-7" />
+                              </svg>
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold truncate ${t.excludeFromBalance ? 'text-gray-300 line-through' : 'text-gray-700'}`}>
+                              {t.description || 'ー'}
+                            </p>
+                            {(linkedStatement || t.excludeFromBalance) && (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {linkedStatement && (
+                                  <span className="text-xs bg-[#c47c2b]/10 text-[#c47c2b] px-1.5 py-0.5 rounded-full">明細リンク済</span>
+                                )}
+                                {t.excludeFromBalance && (
+                                  <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full">収支除外</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className={`text-sm font-bold whitespace-nowrap ${
+                              t.excludeFromBalance ? 'text-gray-300' : t.type === 'income' ? 'text-[#2d5f3f]' : 'text-[#b83232]'
+                            }`}>
+                              {t.type === 'income' ? '+' : '-'}¥{formatJPY(t.amount)}
+                            </span>
+                            <button
+                              onClick={() => handleToggleExclude(t.id, t.excludeFromBalance)}
+                              className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors flex-shrink-0 ${
+                                t.excludeFromBalance
+                                  ? 'bg-gray-100 border-gray-300 text-gray-400'
+                                  : 'border-gray-200 text-gray-300 hover:border-gray-300 hover:text-gray-400'
+                              }`}
+                              title={t.excludeFromBalance ? '収支に含める' : '収支から除外'}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                                <circle cx="12" cy="12" r="9" />
+                                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                              </svg>
+                            </button>
+                            {linkedStatement && (
+                              <button
+                                onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
+                                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                                  isExpanded ? 'bg-[#c47c2b] text-white' : 'text-[#c47c2b] border border-[#c47c2b]/30'
+                                }`}
+                                aria-label="カード明細を展開"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                  className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </button>
+                            )}
+                            <button onClick={() => handleDelete(t.id)}
+                              className="text-gray-300 hover:text-[#b83232] transition-colors p-1" aria-label="削除">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        {isExpanded && linkedStatement && (
+                          <div className="bg-[#fdf8f3] rounded-b-2xl border border-t-0 border-[#c47c2b]/20 overflow-hidden">
+                            <div className="px-4 py-2 border-b border-[#c47c2b]/10 flex items-center justify-between">
+                              <p className="text-xs font-semibold text-[#c47c2b]">
+                                カード明細 {linkedStatement.items?.length}件
+                              </p>
+                              <div className="flex items-center gap-3">
+                                {(() => {
+                                  const excluded = (linkedStatement.items || []).filter((i) => i.excludeFromBalance).reduce((s, i) => s + (i.amount || 0), 0);
+                                  const effective = linkedStatement.totalAmount - excluded;
+                                  return excluded > 0
+                                    ? <p className="text-xs text-[#c47c2b]">有効 ¥{formatJPY(effective)} <span className="text-gray-300">(除外 ¥{formatJPY(excluded)})</span></p>
+                                    : <p className="text-xs text-[#c47c2b]">合計 ¥{formatJPY(linkedStatement.totalAmount)}</p>;
+                                })()}
+                              </div>
+                            </div>
+                            <div className="divide-y divide-[#c47c2b]/8">
+                              {(linkedStatement.items || []).map((item, i) => (
+                                <div key={i} className={`px-4 py-2.5 flex items-center justify-between gap-2 ${item.excludeFromBalance ? 'opacity-50' : ''}`}>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-xs font-medium truncate ${item.excludeFromBalance ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{item.merchant}</p>
+                                    <p className="text-xs text-gray-400">
+                                      {item.date.replace(/-/g, '/')} · {item.addedBy}
+                                    </p>
+                                  </div>
+                                  <span className={`text-sm font-semibold flex-shrink-0 ${item.excludeFromBalance ? 'text-gray-300 line-through' : 'text-[#b83232]'}`}>
+                                    ¥{formatJPY(item.amount)}
+                                  </span>
+                                  <button
+                                    onClick={() => handleToggleCardItemExclude(linkedStatement.id, i, item.excludeFromBalance)}
+                                    className={`w-6 h-6 flex items-center justify-center rounded-full border transition-colors flex-shrink-0 ${
+                                      item.excludeFromBalance
+                                        ? 'bg-gray-100 border-gray-300 text-gray-400'
+                                        : 'border-gray-200 text-gray-300 hover:border-gray-300 hover:text-gray-400'
+                                    }`}
+                                    title={item.excludeFromBalance ? '収支に含める' : '収支から除外'}
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+                                      <circle cx="12" cy="12" r="9" />
+                                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
 
       {/* 口座明細プレビューモーダル */}
