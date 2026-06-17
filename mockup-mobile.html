@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家計ポータル モバイルモックアップ</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: #e8e8e8;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+  gap: 16px;
+}
+
+/* Page selector */
+.page-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 460px;
+}
+.page-selector button {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 2px solid #2d5f3f;
+  background: #fff;
+  color: #2d5f3f;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.page-selector button.active {
+  background: #2d5f3f;
+  color: #fff;
+}
+
+/* Phone frame */
+.phone {
+  width: 375px;
+  min-height: 812px;
+  background: #f5f0eb;
+  border-radius: 44px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.25), 0 0 0 8px #1a1a1a;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Status bar */
+.status-bar {
+  background: #fff;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.status-bar .time { font-size: 15px; font-weight: 700; }
+.status-bar .icons { display: flex; gap: 5px; align-items: center; }
+
+/* App header (mobile) */
+.app-header {
+  background: #fff;
+  border-bottom: 1px solid rgba(0,0,0,0.07);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.app-header .logo { display: flex; align-items: center; gap: 8px; }
+.app-header .logo span { font-size: 15px; font-weight: 700; color: #2d5f3f; }
+.sync { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #aaa; }
+.sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* Scrollable content */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  padding-bottom: 80px;
+  -webkit-overflow-scrolling: touch;
+}
+.content::-webkit-scrollbar { display: none; }
+
+/* Bottom nav */
+.bottom-nav {
+  background: #fff;
+  border-top: 1px solid rgba(0,0,0,0.07);
+  display: flex;
+  flex-shrink: 0;
+  height: 68px;
+  padding-bottom: 8px;
+}
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #bbb;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nav-item.active { color: #2d5f3f; }
+.nav-item svg { width: 22px; height: 22px; }
+
+/* ===== Common Components ===== */
+.page-title { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
+.page-sub { font-size: 13px; color: #aaa; margin-bottom: 20px; }
+
+.card {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  margin-bottom: 16px;
+}
+.card-body { padding: 20px; }
+.card-body.lg { padding: 24px; }
+
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.section-label a { font-size: 12px; color: #2d5f3f; font-weight: 600; }
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+.badge.red    { background: #fee2e2; color: #dc2626; }
+.badge.orange { background: #ffedd5; color: #ea580c; }
+.badge.yellow { background: #fef9c3; color: #ca8a04; }
+.badge.green  { background: #dcfce7; color: #16a34a; }
+.badge.gray   { background: #f3f4f6; color: #6b7280; }
+
+/* ===== DASHBOARD ===== */
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.summary-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.summary-card .icon-box {
+  width: 36px; height: 36px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+  font-size: 16px;
+}
+.summary-card .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+.summary-card .value { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.summary-card .value.green  { color: #2d5f3f; }
+.summary-card .value.red    { color: #b83232; }
+.summary-card .value.gold   { color: #c47c2b; }
+
+.upcoming-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f5f0eb;
+}
+.upcoming-item:last-child { border-bottom: none; padding-bottom: 0; }
+.upcoming-thumb {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: #f0ebe4;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.upcoming-info { flex: 1; }
+.upcoming-info .name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+.upcoming-info .date { font-size: 11px; color: #aaa; margin-top: 2px; }
+.upcoming-days { font-size: 12px; font-weight: 700; color: #ea580c; white-space: nowrap; }
+
+.top-cat-item { margin-bottom: 14px; }
+.top-cat-item:last-child { margin-bottom: 0; }
+.top-cat-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.top-cat-name { font-size: 13px; font-weight: 500; color: #444; }
+.top-cat-amount { font-size: 15px; font-weight: 700; color: #1a1a1a; }
+.bar-bg { height: 8px; background: #f0ebe4; border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; }
+
+/* ===== KAKEIBO ===== */
+.user-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.user-label { font-size: 13px; color: #888; }
+.user-btn {
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.user-btn.active { background: #2d5f3f; color: #fff; }
+.user-btn.inactive { background: #f0ebe4; color: #666; }
+
+.type-toggle {
+  display: flex;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.08);
+  margin-bottom: 16px;
+}
+.type-btn {
+  flex: 1;
+  padding: 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+.type-btn.expense.active { background: #b83232; color: #fff; }
+.type-btn.income.active  { background: #2d5f3f; color: #fff; }
+.type-btn.inactive { background: #f8f6f3; color: #aaa; }
+
+.form-group { margin-bottom: 14px; }
+.form-label { font-size: 13px; color: #888; font-weight: 500; margin-bottom: 6px; display: block; }
+.form-input, .form-select {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid rgba(0,0,0,0.08);
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 14px;
+  background: #faf8f5;
+  color: #1a1a1a;
+}
+.form-input.amount {
+  font-size: 24px;
+  font-weight: 700;
+  padding-left: 32px;
+}
+.form-input-wrap { position: relative; }
+.form-input-wrap .yen {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: #aaa;
+  font-weight: 600;
+}
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.btn-primary {
+  width: 100%;
+  padding: 16px;
+  background: #2d5f3f;
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.month-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 14px;
+}
+.month-chip {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+.month-chip.active { background: #2d5f3f; color: #fff; }
+.month-chip.inactive { background: #fff; color: #666; border: 1.5px solid rgba(0,0,0,0.08); }
+
+.summary-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.summary-chip {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px 12px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.summary-chip .lbl { font-size: 11px; color: #aaa; margin-bottom: 6px; }
+.summary-chip .val { font-size: 16px; font-weight: 700; }
+.summary-chip .val.green { color: #2d5f3f; }
+.summary-chip .val.red   { color: #b83232; }
+
+.tx-date-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #aaa;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+.tx-item {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+.tx-icon {
+  width: 40px; height: 40px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+.tx-icon.expense { background: #fee2e2; }
+.tx-icon.income  { background: #dcfce7; }
+.tx-info { flex: 1; }
+.tx-cat { font-size: 13px; font-weight: 600; color: #333; }
+.tx-by { font-size: 11px; color: #bbb; margin-top: 2px; }
+.tx-amount { font-size: 16px; font-weight: 700; }
+.tx-amount.expense { color: #b83232; }
+.tx-amount.income  { color: #2d5f3f; }
+
+/* ===== BUDGET ===== */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-radius: 20px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.month-nav-btn {
+  width: 36px; height: 36px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(0,0,0,0.08);
+  background: #faf8f5;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: #666;
+}
+.month-nav span { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+
+.budget-total {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.budget-total-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.budget-total-row .lbl { font-size: 13px; color: #888; }
+.budget-total-row .val { font-size: 18px; font-weight: 700; }
+.total-bar-bg { height: 12px; background: #f0ebe4; border-radius: 6px; overflow: hidden; margin-top: 8px; }
+.total-bar-fill { height: 100%; border-radius: 6px; background: #2d5f3f; }
+
+.budget-list {
+  background: #fff;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.budget-row {
+  padding: 18px 20px;
+  border-bottom: 1px solid #f5f0eb;
+}
+.budget-row:last-child { border-bottom: none; }
+.budget-row-top {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+.budget-row-cat { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+.budget-row-actual { font-size: 15px; font-weight: 700; }
+.budget-bar-bg { height: 8px; background: #f0ebe4; border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+.budget-bar-fill { height: 100%; border-radius: 4px; }
+.budget-input-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.budget-input-row .lbl { font-size: 12px; color: #aaa; flex-shrink: 0; }
+.budget-input-row input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1.5px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  background: #faf8f5;
+  color: #1a1a1a;
+}
+.save-btn {
+  padding: 10px 14px;
+  background: #2d5f3f;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ===== ASSETS ===== */
+.asset-total-card {
+  background: linear-gradient(135deg, #2d5f3f, #3d7a52);
+  border-radius: 24px;
+  padding: 28px 24px;
+  margin-bottom: 16px;
+  color: #fff;
+}
+.asset-total-card .lbl { font-size: 13px; opacity: 0.7; margin-bottom: 8px; }
+.asset-total-card .val { font-size: 38px; font-weight: 700; letter-spacing: -1px; }
+.asset-total-card .sub { font-size: 12px; opacity: 0.55; margin-top: 10px; line-height: 1.6; }
+
+.breakdown-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.breakdown-legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-size: 12px; color: #888;
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.add-btn {
+  width: 100%;
+  padding: 16px;
+  background: #fff;
+  border: 2px dashed rgba(0,0,0,0.12);
+  border-radius: 18px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2d5f3f;
+  cursor: pointer;
+  margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+.asset-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #f5f0eb;
+}
+.asset-item:last-child { border-bottom: none; }
+.asset-icon {
+  width: 44px; height: 44px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.asset-icon.bank  { background: #dbeafe; }
+.asset-icon.stock { background: #dcfce7; }
+.asset-icon.fund  { background: #fef3c7; }
+.asset-info { flex: 1; }
+.asset-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+.asset-type { font-size: 11px; color: #aaa; margin-top: 2px; }
+.asset-amount { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+
+/* ===== YUTAI ===== */
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 18px 12px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.stat-card .val { font-size: 32px; font-weight: 700; color: #1a1a1a; margin-bottom: 4px; }
+.stat-card .lbl { font-size: 11px; color: #aaa; }
+
+.tab-switcher {
+  display: flex;
+  background: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.tab-btn {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tab-btn.active { background: #2d5f3f; color: #fff; }
+.tab-btn.inactive { background: transparent; color: #aaa; }
+
+.yutai-card {
+  background: #fff;
+  border-radius: 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  overflow: hidden;
+  display: flex;
+  border-left: 5px solid #e5ddd5;
+}
+.yutai-card.high { border-left-color: #ef4444; }
+.yutai-card.mid  { border-left-color: #f59e0b; }
+.yutai-card.low  { border-left-color: #2d5f3f; }
+.yutai-thumb {
+  width: 80px;
+  background: #f5f0eb;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+}
+.yutai-body { flex: 1; padding: 16px; }
+.yutai-name { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px; }
+.yutai-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.yutai-content { font-size: 12px; color: #777; margin-bottom: 10px; line-height: 1.5; }
+.yutai-footer { display: flex; justify-content: space-between; align-items: center; }
+.yutai-by { font-size: 11px; color: #bbb; }
+.yutai-expiry { font-size: 11px; color: #bbb; }
+
+/* Home indicator */
+.home-indicator {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+.home-bar {
+  width: 120px;
+  height: 5px;
+  background: #1a1a1a;
+  border-radius: 3px;
+  opacity: 0.2;
+}
+</style>
+</head>
+<body>
+
+<div class="page-selector">
+  <button class="active" onclick="showPage('dashboard')">🏠 ダッシュボード</button>
+  <button onclick="showPage('kakeibo')">📒 家計簿</button>
+  <button onclick="showPage('budget')">🎯 予算</button>
+  <button onclick="showPage('assets')">💰 資産</button>
+  <button onclick="showPage('yutai')">🎁 優待</button>
+</div>
+
+<div class="phone">
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="time">9:41</span>
+    <div class="icons">
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="#1a1a1a"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity=".3"/></svg>
+      <svg width="16" height="12" viewBox="0 0 24 18" fill="#1a1a1a"><path d="M12 3C7 3 2.7 5.5 0 9.2l2.3 2.3C4.5 8.4 8 6.5 12 6.5s7.5 1.9 9.7 5L24 9.2C21.3 5.5 17 3 12 3z"/><path d="M12 9c-3.3 0-6.2 1.5-8.2 3.8L6 15.1C7.5 13.2 9.6 12 12 12s4.5 1.2 6 3.1l2.2-2.3C18.2 10.5 15.3 9 12 9z"/><circle cx="12" cy="18" r="2.5"/></svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="#1a1a1a"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1a1a1a" stroke-width="1" fill="none"/><rect x="1.5" y="2.5" width="17" height="7" rx="2" fill="#1a1a1a"/><rect x="22.5" y="4" width="2" height="4" rx="1" fill="#1a1a1a" opacity=".4"/></svg>
+    </div>
+  </div>
+
+  <!-- App Header -->
+  <div class="app-header">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2d5f3f" stroke-width="2.2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <span>家計ポータル</span>
+    </div>
+    <div class="sync">
+      <div class="sync-dot"></div>同期済み
+    </div>
+  </div>
+
+  <!-- ===== DASHBOARD ===== -->
+  <div class="content" id="page-dashboard">
+    <div class="page-title">ダッシュボード</div>
+    <div class="page-sub">2025年6月</div>
+
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="icon-box" style="background:#e8f0eb;color:#2d5f3f">↑</div>
+        <div class="label">今月の収入</div>
+        <div class="value green">¥320,000</div>
+      </div>
+      <div class="summary-card">
+        <div class="icon-box" style="background:#fbeaea;color:#b83232">↓</div>
+        <div class="label">今月の支出</div>
+        <div class="value red">¥187,500</div>
+      </div>
+      <div class="summary-card">
+        <div class="icon-box" style="background:#e8f0eb;color:#2d5f3f">±</div>
+        <div class="label">今月の収支</div>
+        <div class="value green">+¥132,500</div>
+      </div>
+      <div class="summary-card">
+        <div class="icon-box" style="background:#faf0e2;color:#c47c2b">💰</div>
+        <div class="label">資産総額</div>
+        <div class="value gold">¥482万</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <div class="section-label">
+          期限間近の優待
+          <a>すべて →</a>
+        </div>
+        <div class="upcoming-item">
+          <div class="upcoming-thumb">🛒</div>
+          <div class="upcoming-info">
+            <div class="name">イオン</div>
+            <div class="date">期限：2025/06/29</div>
+          </div>
+          <span class="upcoming-days">残12日</span>
+        </div>
+        <div class="upcoming-item">
+          <div class="upcoming-thumb">🍜</div>
+          <div class="upcoming-info">
+            <div class="name">吉野家</div>
+            <div class="date">期限：2025/07/05</div>
+          </div>
+          <span class="upcoming-days" style="color:#c47c2b">残18日</span>
+        </div>
+        <div class="upcoming-item">
+          <div class="upcoming-thumb">🏨</div>
+          <div class="upcoming-info">
+            <div class="name">東急</div>
+            <div class="date">期限：2025/08/11</div>
+          </div>
+          <span class="upcoming-days" style="color:#aaa">残55日</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <div class="section-label">
+          今月の支出 TOP3
+          <a>詳細 →</a>
+        </div>
+        <div class="top-cat-item">
+          <div class="top-cat-row">
+            <span class="top-cat-name">#1 食費</span>
+            <span class="top-cat-amount">¥42,000</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" style="background:#2d5f3f;width:100%"></div></div>
+        </div>
+        <div class="top-cat-item">
+          <div class="top-cat-row">
+            <span class="top-cat-name">#2 外食</span>
+            <span class="top-cat-amount">¥31,000</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" style="background:#c47c2b;width:74%"></div></div>
+        </div>
+        <div class="top-cat-item">
+          <div class="top-cat-row">
+            <span class="top-cat-name">#3 日用品</span>
+            <span class="top-cat-amount">¥21,000</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" style="background:#60a5fa;width:50%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== KAKEIBO ===== -->
+  <div class="content" id="page-kakeibo" style="display:none">
+    <div class="page-title">家計簿</div>
+    <div class="page-sub" style="margin-bottom:16px"></div>
+
+    <div class="user-selector">
+      <span class="user-label">入力者</span>
+      <button class="user-btn active">ひゅうご</button>
+      <button class="user-btn inactive">なる</button>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <div class="section-label" style="margin-bottom:14px">収支を追加</div>
+
+        <div class="type-toggle">
+          <button class="type-btn expense active">支出</button>
+          <button class="type-btn income inactive">収入</button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">金額 *</label>
+          <div class="form-input-wrap">
+            <span class="yen">¥</span>
+            <input class="form-input amount" type="number" placeholder="0" style="width:100%;padding-left:36px">
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-bottom:14px">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">カテゴリ</label>
+            <select class="form-select">
+              <option>食費</option><option>外食</option><option>日用品</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">日付</label>
+            <input class="form-input" type="date" value="2025-06-17">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">メモ（任意）</label>
+          <input class="form-input" type="text" placeholder="スーパーで買い物">
+        </div>
+
+        <button class="btn-primary">追加する</button>
+      </div>
+    </div>
+
+    <div class="month-chips">
+      <button class="month-chip active">6月</button>
+      <button class="month-chip inactive">5月</button>
+      <button class="month-chip inactive">4月</button>
+    </div>
+
+    <div class="summary-strip">
+      <div class="summary-chip">
+        <div class="lbl">収入</div>
+        <div class="val green">+32万</div>
+      </div>
+      <div class="summary-chip">
+        <div class="lbl">支出</div>
+        <div class="val red">-18.7万</div>
+      </div>
+      <div class="summary-chip">
+        <div class="lbl">収支</div>
+        <div class="val green">+13.2万</div>
+      </div>
+    </div>
+
+    <div class="tx-date-label">6月17日（火）</div>
+    <div class="tx-item">
+      <div class="tx-icon expense">↓</div>
+      <div class="tx-info">
+        <div class="tx-cat">食費</div>
+        <div class="tx-by">ひゅうご · スーパー</div>
+      </div>
+      <div class="tx-amount expense">-¥3,200</div>
+    </div>
+    <div class="tx-item">
+      <div class="tx-icon expense">↓</div>
+      <div class="tx-info">
+        <div class="tx-cat">交通費</div>
+        <div class="tx-by">なる</div>
+      </div>
+      <div class="tx-amount expense">-¥560</div>
+    </div>
+
+    <div class="tx-date-label" style="margin-top:8px">6月15日（日）</div>
+    <div class="tx-item">
+      <div class="tx-icon income">↑</div>
+      <div class="tx-info">
+        <div class="tx-cat">給与</div>
+        <div class="tx-by">ひゅうご · 月給</div>
+      </div>
+      <div class="tx-amount income">+¥280,000</div>
+    </div>
+  </div>
+
+  <!-- ===== BUDGET ===== -->
+  <div class="content" id="page-budget" style="display:none">
+    <div class="page-title">予算管理</div>
+    <div class="page-sub" style="margin-bottom:16px"></div>
+
+    <div class="month-nav">
+      <div class="month-nav-btn">←</div>
+      <span>2025年6月</span>
+      <div class="month-nav-btn">→</div>
+    </div>
+
+    <div class="budget-total">
+      <div class="budget-total-row">
+        <span class="lbl">合計予算</span>
+        <span class="val" style="color:#1a1a1a">¥200,000</span>
+      </div>
+      <div class="budget-total-row" style="margin-bottom:4px">
+        <span class="lbl">合計支出</span>
+        <span class="val" style="color:#2d5f3f">¥187,500</span>
+      </div>
+      <div style="font-size:12px;color:#aaa;text-align:right;margin-bottom:6px">94%</div>
+      <div class="total-bar-bg"><div class="total-bar-fill" style="width:94%"></div></div>
+    </div>
+
+    <div class="budget-list">
+      <div class="budget-row">
+        <div class="budget-row-top">
+          <span class="budget-row-cat">🛒 食費</span>
+          <span class="budget-row-actual" style="color:#2d5f3f">¥42,000</span>
+        </div>
+        <div class="budget-bar-bg"><div class="budget-bar-fill" style="background:#2d5f3f;width:84%"></div></div>
+        <div class="budget-input-row">
+          <span class="lbl">予算</span>
+          <input type="number" value="50000" placeholder="未設定">
+          <button class="save-btn">保存</button>
+        </div>
+      </div>
+      <div class="budget-row">
+        <div class="budget-row-top">
+          <span class="budget-row-cat">🍜 外食</span>
+          <span class="budget-row-actual" style="color:#b83232">¥31,000 <span style="font-size:11px;background:#fee2e2;padding:2px 8px;border-radius:10px">超過</span></span>
+        </div>
+        <div class="budget-bar-bg"><div class="budget-bar-fill" style="background:#b83232;width:100%"></div></div>
+        <div class="budget-input-row">
+          <span class="lbl">予算</span>
+          <input type="number" value="25000" placeholder="未設定">
+          <button class="save-btn">保存</button>
+        </div>
+      </div>
+      <div class="budget-row">
+        <div class="budget-row-top">
+          <span class="budget-row-cat">🧴 日用品</span>
+          <span class="budget-row-actual" style="color:#1a1a1a">¥21,000</span>
+        </div>
+        <div class="budget-bar-bg"><div class="budget-bar-fill" style="background:#f59e0b;width:84%"></div></div>
+        <div class="budget-input-row">
+          <span class="lbl">予算</span>
+          <input type="number" value="25000" placeholder="未設定">
+          <button class="save-btn">保存</button>
+        </div>
+      </div>
+      <div class="budget-row">
+        <div class="budget-row-top">
+          <span class="budget-row-cat">🎮 娯楽</span>
+          <span class="budget-row-actual" style="color:#1a1a1a">¥18,000</span>
+        </div>
+        <div class="budget-bar-bg"><div class="budget-bar-fill" style="background:#2d5f3f;width:60%"></div></div>
+        <div class="budget-input-row">
+          <span class="lbl">予算</span>
+          <input type="number" value="30000" placeholder="未設定">
+          <button class="save-btn">保存</button>
+        </div>
+      </div>
+      <div class="budget-row">
+        <div class="budget-row-top">
+          <span class="budget-row-cat">🚃 交通費</span>
+          <span class="budget-row-actual" style="color:#aaa">-</span>
+        </div>
+        <div class="budget-input-row">
+          <span class="lbl">予算</span>
+          <input type="number" placeholder="未設定">
+          <button class="save-btn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ASSETS ===== -->
+  <div class="content" id="page-assets" style="display:none">
+    <div class="page-title">資産管理</div>
+    <div class="page-sub" style="margin-bottom:16px"></div>
+
+    <div class="asset-total-card">
+      <div class="lbl">💰 資産総額</div>
+      <div class="val">¥4,820,000</div>
+      <div class="sub">銀行 ¥2,100,000<br>株式 ¥1,980,000 ／ 投信 ¥740,000</div>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="padding-bottom:14px">
+        <div class="section-label">内訳</div>
+        <div class="breakdown-bar">
+          <div style="background:#60a5fa;width:43.6%;border-radius:4px 0 0 4px"></div>
+          <div style="background:#2d5f3f;width:41.1%"></div>
+          <div style="background:#f59e0b;width:15.3%;border-radius:0 4px 4px 0"></div>
+        </div>
+        <div class="breakdown-legend">
+          <span><span class="legend-dot" style="background:#60a5fa"></span>銀行 43.6%</span>
+          <span><span class="legend-dot" style="background:#2d5f3f"></span>株式 41.1%</span>
+          <span><span class="legend-dot" style="background:#f59e0b"></span>投信 15.3%</span>
+        </div>
+      </div>
+    </div>
+
+    <button class="add-btn">＋ 資産を追加</button>
+
+    <div class="card">
+      <div class="asset-item">
+        <div class="asset-icon bank">🏦</div>
+        <div class="asset-info">
+          <div class="asset-name">楽天銀行</div>
+          <div class="asset-type">銀行</div>
+        </div>
+        <div class="asset-amount">¥1,200,000</div>
+      </div>
+      <div class="asset-item">
+        <div class="asset-icon bank">🏦</div>
+        <div class="asset-info">
+          <div class="asset-name">ゆうちょ銀行</div>
+          <div class="asset-type">銀行</div>
+        </div>
+        <div class="asset-amount">¥900,000</div>
+      </div>
+      <div class="asset-item">
+        <div class="asset-icon stock">📈</div>
+        <div class="asset-info">
+          <div class="asset-name">SBI証券（株式）</div>
+          <div class="asset-type">株式</div>
+        </div>
+        <div class="asset-amount">¥1,980,000</div>
+      </div>
+      <div class="asset-item">
+        <div class="asset-icon fund">📊</div>
+        <div class="asset-info">
+          <div class="asset-name">eMAXIS Slim 全世界</div>
+          <div class="asset-type">投資信託</div>
+        </div>
+        <div class="asset-amount">¥740,000</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== YUTAI ===== -->
+  <div class="content" id="page-yutai" style="display:none">
+    <div class="page-title">株主優待</div>
+    <div class="page-sub" style="margin-bottom:16px"></div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="val">12</div>
+        <div class="lbl">保有銘柄</div>
+      </div>
+      <div class="stat-card">
+        <div class="val" style="color:#ea580c">3</div>
+        <div class="lbl">期限間近</div>
+      </div>
+      <div class="stat-card">
+        <div class="val" style="color:#ef4444">2</div>
+        <div class="lbl">優先度：高</div>
+      </div>
+    </div>
+
+    <div class="tab-switcher">
+      <button class="tab-btn active">銘柄一覧</button>
+      <button class="tab-btn inactive">カレンダー</button>
+    </div>
+
+    <div class="yutai-card high">
+      <div class="yutai-thumb">🛒</div>
+      <div class="yutai-body">
+        <div class="yutai-name">イオン</div>
+        <div class="yutai-badges">
+          <span class="badge red">優先：高</span>
+          <span class="badge orange">残12日</span>
+        </div>
+        <div class="yutai-content">お買い物券 5,000円分<br>イオンモール全店舗で利用可能</div>
+        <div class="yutai-footer">
+          <span class="yutai-by">ひゅうご</span>
+          <span class="yutai-expiry">期限：2025/06/29</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="yutai-card mid">
+      <div class="yutai-thumb">🍜</div>
+      <div class="yutai-body">
+        <div class="yutai-name">吉野家</div>
+        <div class="yutai-badges">
+          <span class="badge yellow">優先：中</span>
+          <span class="badge yellow">残18日</span>
+        </div>
+        <div class="yutai-content">食事券 3,000円分（500円×6枚）</div>
+        <div class="yutai-footer">
+          <span class="yutai-by">なる</span>
+          <span class="yutai-expiry">期限：2025/07/05</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="yutai-card low">
+      <div class="yutai-thumb">🏨</div>
+      <div class="yutai-body">
+        <div class="yutai-name">東急</div>
+        <div class="yutai-badges">
+          <span class="badge green">優先：低</span>
+          <span class="badge gray">残55日</span>
+        </div>
+        <div class="yutai-content">ホテル・百貨店 優待割引券</div>
+        <div class="yutai-footer">
+          <span class="yutai-by">ひゅうご</span>
+          <span class="yutai-expiry">期限：2025/08/11</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      ダッシュボード
+    </div>
+    <div class="nav-item" id="nav-kakeibo" onclick="showPage('kakeibo')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      家計簿
+    </div>
+    <div class="nav-item" id="nav-budget" onclick="showPage('budget')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>
+      </svg>
+      予算
+    </div>
+    <div class="nav-item" id="nav-assets" onclick="showPage('assets')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="7" width="20" height="14" rx="2"/>
+        <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+      </svg>
+      資産
+    </div>
+    <div class="nav-item" id="nav-yutai" onclick="showPage('yutai')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8M12 17v4"/>
+      </svg>
+      優待
+    </div>
+  </nav>
+
+  <div class="home-indicator"><div class="home-bar"></div></div>
+</div>
+
+<script>
+const PAGES = ['dashboard','kakeibo','budget','assets','yutai'];
+function showPage(name) {
+  PAGES.forEach(p => {
+    document.getElementById('page-'+p).style.display = p===name ? 'block' : 'none';
+    const nav = document.getElementById('nav-'+p);
+    if(nav) nav.className = 'nav-item' + (p===name ? ' active' : '');
+  });
+  document.querySelectorAll('.page-selector button').forEach(b => {
+    const labels = {dashboard:'ダッシュボード',kakeibo:'家計簿',budget:'予算',assets:'資産',yutai:'優待'};
+    b.className = b.textContent.includes(labels[name]) ? 'active' : '';
+  });
+}
+</script>
+</body>
+</html>
