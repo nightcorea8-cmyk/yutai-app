@@ -29,8 +29,6 @@ function daysLeft(ds) {
   return Math.round((new Date(ds) - today) / 86400000);
 }
 
-const EXPENSE_CATEGORIES = ['食費', '外食', '日用品', '交通費', '娯楽', '医療', '教育', '住居', '光熱費', '通信費', '服飾', 'その他'];
-
 export default function Dashboard() {
   const [transactions, setTransactions] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -43,8 +41,7 @@ export default function Dashboard() {
 
     const tq = query(collection(db, 'transactions'), orderBy('date', 'desc'));
     unsubs.push(onSnapshot(tq, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTransactions(docs);
+      setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, () => {}));
 
     unsubs.push(onSnapshot(collection(db, 'assets'), (snap) => {
@@ -60,85 +57,33 @@ export default function Dashboard() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
+  // データロード後、表示月にデータがなければ最新データのある月へ自動移動
+  useEffect(() => {
+    if (transactions.length === 0) return;
+    const months = [...new Set(transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+    if (months.length > 0 && !transactions.some((t) => t.date?.startsWith(viewMonth))) {
+      setViewMonth(months[0]);
+    }
+  }, [transactions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const availableMonths = [...new Set(
     transactions.map((t) => t.date?.slice(0, 7)).filter(Boolean)
   )].sort((a, b) => b.localeCompare(a));
 
-  const monthlyTx = transactions.filter((t) => t.date && t.date.startsWith(viewMonth));
+  const monthlyTx = transactions.filter((t) => t.date?.startsWith(viewMonth));
   const totalIncome = monthlyTx.filter((t) => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
   const totalExpense = monthlyTx.filter((t) => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
   const balance = totalIncome - totalExpense;
-
   const totalAssets = assets.reduce((s, a) => s + (a.amount || 0), 0);
 
-  // Expiring stocks (next 30 days)
+  // 1ヶ月以内に期限が来る優待
   const expiringStocks = stocks
     .filter((s) => s.expiry)
     .map((s) => ({ ...s, dl: daysLeft(s.expiry) }))
     .filter((s) => s.dl >= 0 && s.dl <= 30)
     .sort((a, b) => a.dl - b.dl);
 
-  // Top 3 expense categories this month
-  const expByCategory = {};
-  monthlyTx
-    .filter((t) => t.type === 'expense')
-    .forEach((t) => {
-      expByCategory[t.category] = (expByCategory[t.category] || 0) + (t.amount || 0);
-    });
-  const topCategories = Object.entries(expByCategory)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
-  const maxCatAmount = topCategories.length > 0 ? topCategories[0][1] : 1;
-
   const monthLabel = getMonthLabel(viewMonth);
-
-  const summaryCards = [
-    {
-      label: `${monthLabel}の収入`,
-      value: `¥${formatJPY(totalIncome)}`,
-      color: 'text-[#2d5f3f]',
-      bg: 'bg-[#e8f0eb]',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
-          <path d="M12 19V5M5 12l7-7 7 7" />
-        </svg>
-      ),
-    },
-    {
-      label: `${monthLabel}の支出`,
-      value: `¥${formatJPY(totalExpense)}`,
-      color: 'text-[#b83232]',
-      bg: 'bg-[#fbeaea]',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
-          <path d="M12 5v14M19 12l-7 7-7-7" />
-        </svg>
-      ),
-    },
-    {
-      label: `${monthLabel}の収支`,
-      value: `${balance >= 0 ? '+' : '-'}¥${formatJPY(balance)}`,
-      color: balance >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]',
-      bg: balance >= 0 ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
-          <path d="M2 12h20M12 2v20" />
-        </svg>
-      ),
-    },
-    {
-      label: '資産総額',
-      value: `¥${formatJPY(totalAssets)}`,
-      color: 'text-[#c47c2b]',
-      bg: 'bg-[#faf0e2]',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
-          <rect x="2" y="7" width="20" height="14" rx="2" />
-          <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
-        </svg>
-      ),
-    },
-  ];
 
   if (loading) {
     return (
@@ -186,31 +131,65 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        {summaryCards.map((card) => (
-          <div key={card.label} className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
-            <div className={`w-9 h-9 ${card.bg} ${card.color} rounded-xl flex items-center justify-center mb-4`}>
-              {card.icon}
+      {/* 収入・支出・収支 — 1行3列 */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        {[
+          { label: '収入', value: totalIncome, prefix: '+', color: 'text-[#2d5f3f]', bg: 'bg-[#e8f0eb]' },
+          { label: '支出', value: totalExpense, prefix: '-', color: 'text-[#b83232]', bg: 'bg-[#fbeaea]' },
+          { label: '収支', value: Math.abs(balance), prefix: balance >= 0 ? '+' : '-', color: balance >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]', bg: balance >= 0 ? 'bg-[#e8f0eb]' : 'bg-[#fbeaea]' },
+        ].map(({ label, value, prefix, color, bg }) => (
+          <div key={label} className="bg-white rounded-2xl border border-black/5 shadow-sm px-3 py-3.5">
+            <div className={`w-7 h-7 ${bg} ${color} rounded-lg flex items-center justify-center mb-2`}>
+              {label === '収入' && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              )}
+              {label === '支出' && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <path d="M12 5v14M19 12l-7 7-7-7" />
+                </svg>
+              )}
+              {label === '収支' && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                  <path d="M2 12h20M12 2v20" />
+                </svg>
+              )}
             </div>
-            <p className="text-sm text-gray-500 mb-1">{card.label}</p>
-            <p className={`text-2xl font-bold ${card.color} leading-tight`}>{card.value}</p>
+            <p className="text-xs text-gray-400 mb-1">{label}</p>
+            <p className={`text-sm font-bold ${color} leading-tight`}>{prefix}¥{formatJPY(value)}</p>
           </div>
         ))}
       </div>
 
-      {/* Expiring stocks */}
-      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5 mb-5">
+      {/* 資産総額 */}
+      <div className="bg-white rounded-2xl border border-black/5 shadow-sm px-4 py-3.5 mb-5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-[#faf0e2] text-[#c47c2b] rounded-lg flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <rect x="2" y="7" width="20" height="14" rx="2" />
+              <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-500">資産総額</p>
+        </div>
+        <p className="text-lg font-bold text-[#c47c2b]">¥{formatJPY(totalAssets)}</p>
+      </div>
+
+      {/* 期限間近の優待（1ヶ月以内） */}
+      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold text-gray-800">期限間近の優待</h2>
           <Link to="/yutai" className="text-xs text-[#2d5f3f] font-medium">すべて見る →</Link>
         </div>
         {expiringStocks.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">期限間近の優待はありません</p>
+          <p className="text-sm text-gray-400 py-6 text-center">1ヶ月以内に期限を迎える優待はありません</p>
         ) : (
           <div className="space-y-3">
-            {expiringStocks.slice(0, 5).map((s) => {
-              const urgentClass = s.dl <= 7 ? 'text-[#b83232] bg-[#fbeaea]' : s.dl <= 30 ? 'text-[#c47c2b] bg-[#faf0e2]' : 'text-[#2d5f3f] bg-[#e8f0eb]';
+            {expiringStocks.map((s) => {
+              const urgentClass = s.dl <= 7
+                ? 'text-[#b83232] bg-[#fbeaea]'
+                : 'text-[#c47c2b] bg-[#faf0e2]';
               return (
                 <div key={s.id} className="flex items-center gap-3 py-1">
                   {s.photo ? (
@@ -229,44 +208,9 @@ export default function Dashboard() {
                     <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{s.expiry}</p>
                   </div>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${urgentClass}`}>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${urgentClass}`}>
                     残{s.dl}日
                   </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Top 3 expense categories */}
-      <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-gray-800">{monthLabel}の支出 TOP3</h2>
-          <Link to="/kakeibo" className="text-xs text-[#2d5f3f] font-medium">詳細 →</Link>
-        </div>
-        {topCategories.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">{monthLabel}の支出データがありません</p>
-        ) : (
-          <div className="space-y-4">
-            {topCategories.map(([cat, amount], i) => {
-              const pct = Math.round((amount / maxCatAmount) * 100);
-              const colors = ['bg-[#2d5f3f]', 'bg-[#c47c2b]', 'bg-blue-400'];
-              return (
-                <div key={cat}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-400">#{i + 1}</span>
-                      <span className="text-sm font-medium text-gray-700">{cat}</span>
-                    </div>
-                    <span className="text-base font-bold text-gray-800">¥{formatJPY(amount)}</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${colors[i]} rounded-full`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
                 </div>
               );
             })}
