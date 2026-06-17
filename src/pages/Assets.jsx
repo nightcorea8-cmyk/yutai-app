@@ -9,6 +9,13 @@ function formatJPY(n) {
   return new Intl.NumberFormat('ja-JP').format(Math.abs(n));
 }
 
+function formatTs(ts) {
+  if (!ts) return null;
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const ASSET_TYPES = [
   { value: 'bank', label: '銀行口座' },
   { value: 'securities', label: '証券口座' },
@@ -235,7 +242,7 @@ export default function Assets() {
         const maxOrder = sortedAssets.length > 0 ? (sortedAssets[sortedAssets.length - 1].order ?? sortedAssets.length - 1) + 1 : 0;
         await addDoc(collection(db, 'assets'), {
           name: form.name.trim(), type: form.type, amount: Number(form.amount),
-          note: form.note.trim(), order: maxOrder, updatedAt: serverTimestamp(),
+          note: form.note.trim(), order: maxOrder, createdAt: serverTimestamp(),
         });
       }
       setForm(EMPTY_FORM);
@@ -319,7 +326,7 @@ export default function Assets() {
           type: 'securities',
           amount: pendingTotalJPY,
           order: maxOrder,
-          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
         });
       }
       await setDoc(doc(db, 'stockPortfolio', portfolioId), {
@@ -578,6 +585,11 @@ export default function Assets() {
                     </div>
                     <p className="text-sm font-medium text-gray-800 truncate">{asset.name}</p>
                     {asset.note && <p className="text-xs text-gray-400 truncate">{asset.note}</p>}
+                    {(asset.updatedAt || asset.createdAt) && (
+                      <p className="text-xs text-gray-300 truncate">
+                        {asset.updatedAt ? '更新' : '追加'} {formatTs(asset.updatedAt || asset.createdAt)}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1 flex-shrink-0">
