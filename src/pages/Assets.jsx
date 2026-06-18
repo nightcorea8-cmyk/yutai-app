@@ -175,6 +175,8 @@ export default function Assets() {
   const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
   const [pricesFetching, setPricesFetching] = useState(false);
   const [priceViewMode, setPriceViewMode] = useState('csv');
+  const [pricesFetchedCount, setPricesFetchedCount] = useState(null);
+  const [pricesRequestedCount, setPricesRequestedCount] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'assets'), (snap) => {
@@ -212,8 +214,12 @@ export default function Assets() {
       if (d.prices) {
         setLatestPrices(d.prices);
         setPricesUpdatedAt(new Date(d.updatedAt));
+        setPricesFetchedCount(d.fetched ?? Object.keys(d.prices).length);
+        setPricesRequestedCount(d.requested ?? [...symbolSet].length);
       }
-    } catch { /* ignore, keep showing CSV values */ } finally {
+    } catch (err) {
+      console.error('fetchLatestPrices error:', err.message);
+    } finally {
       setPricesFetching(false);
     }
   }, [portfolios]);
@@ -609,12 +615,25 @@ export default function Assets() {
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs text-gray-400">
                 {priceViewMode === 'latest' && pricesUpdatedAt
-                  ? `最終更新 ${formatTime(pricesUpdatedAt)}`
+                  ? `更新 ${formatTime(pricesUpdatedAt)}（${pricesFetchedCount}/${pricesRequestedCount}銘柄）`
+                  : priceViewMode === 'latest' && !pricesUpdatedAt && !pricesFetching
+                  ? '取得失敗'
                   : 'CSVインポート時の評価額'}
               </span>
               <div className="flex items-center gap-2">
-                {pricesFetching && (
+                {pricesFetching ? (
                   <div className="w-3 h-3 border-2 border-gray-200 border-t-[#6b4aa0] rounded-full animate-spin" />
+                ) : (
+                  <button
+                    onClick={fetchLatestPrices}
+                    className="text-gray-300 hover:text-[#6b4aa0] transition-colors p-0.5"
+                    aria-label="価格を更新"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                      <polyline points="23 4 23 10 17 10" />
+                      <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+                    </svg>
+                  </button>
                 )}
                 <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
                   <button
@@ -624,7 +643,7 @@ export default function Assets() {
                     CSV
                   </button>
                   <button
-                    onClick={() => setPriceViewMode('latest')}
+                    onClick={() => { setPriceViewMode('latest'); if (!pricesUpdatedAt) fetchLatestPrices(); }}
                     className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${priceViewMode === 'latest' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                   >
                     最新
