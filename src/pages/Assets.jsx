@@ -178,6 +178,10 @@ export default function Assets() {
   const [pricesFetchedCount, setPricesFetchedCount] = useState(null);
   const [pricesRequestedCount, setPricesRequestedCount] = useState(null);
 
+  // Use a ref so fetchLatestPrices can always read the latest portfolios
+  // without being recreated (which would reset the 5-min interval).
+  const portfoliosRef = useRef({});
+
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'assets'), (snap) => {
       setAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -190,13 +194,14 @@ export default function Assets() {
     const unsub = onSnapshot(collection(db, 'stockPortfolio'), (snap) => {
       const map = {};
       snap.docs.forEach((d) => { map[d.id] = d.data(); });
+      portfoliosRef.current = map;
       setPortfolios(map);
     }, () => {});
     return unsub;
   }, []);
 
   const fetchLatestPrices = useCallback(async () => {
-    const allItems = Object.values(portfolios).flatMap((p) => p.items || []);
+    const allItems = Object.values(portfoliosRef.current).flatMap((p) => p.items || []);
     const symbolSet = new Set();
     allItems.forEach((item) => {
       if (!item.ticker || SKIP_PRICE_TYPES.has(item.type) || item.currentPrice <= 0) return;
@@ -211,24 +216,38 @@ export default function Assets() {
         body: JSON.stringify({ tickers: [...symbolSet] }),
       });
       const d = await r.json();
-      if (d.prices) {
+      // Only overwrite stored prices when we actually received ≥1 price.
+      // An empty {} on a transient failure must not erase previously fetched data.
+      if (d.prices && Object.keys(d.prices).length > 0) {
         setLatestPrices(d.prices);
         setPricesUpdatedAt(new Date(d.updatedAt));
-        setPricesFetchedCount(d.fetched ?? Object.keys(d.prices).length);
-        setPricesRequestedCount(d.requested ?? [...symbolSet].length);
+      }
+      // Always update the count display for feedback
+      if (d.requested != null) {
+        setPricesFetchedCount(d.fetched);
+        setPricesRequestedCount(d.requested);
       }
     } catch (err) {
       console.error('fetchLatestPrices error:', err.message);
     } finally {
       setPricesFetching(false);
     }
-  }, [portfolios]);
+  }, []); // stable — reads portfolios via ref
 
+  // Start the 5-min auto-refresh once on mount.
   useEffect(() => {
-    fetchLatestPrices();
     const id = setInterval(fetchLatestPrices, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [fetchLatestPrices]);
+
+  // Trigger an initial fetch as soon as portfolio data first arrives.
+  const didFetchOnce = useRef(false);
+  useEffect(() => {
+    if (!didFetchOnce.current && Object.keys(portfolios).length > 0) {
+      didFetchOnce.current = true;
+      fetchLatestPrices();
+    }
+  }, [portfolios, fetchLatestPrices]);
 
   const getLatestValue = useCallback((item) => {
     if (!item.ticker || item.currentPrice <= 0 || SKIP_PRICE_TYPES.has(item.type)) return null;
