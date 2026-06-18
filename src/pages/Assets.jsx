@@ -202,18 +202,20 @@ export default function Assets() {
 
   const fetchLatestPrices = useCallback(async () => {
     const allItems = Object.values(portfoliosRef.current).flatMap((p) => p.items || []);
-    const symbolSet = new Set();
+    const symbolMap = new Map(); // symbol → type (dedup by symbol)
     allItems.forEach((item) => {
       if (!item.ticker || SKIP_PRICE_TYPES.has(item.type) || item.currentPrice <= 0) return;
-      symbolSet.add(item.type === '米国株式' ? item.ticker : `${item.ticker}.T`);
+      const symbol = item.type === '米国株式' ? item.ticker : `${item.ticker}.T`;
+      symbolMap.set(symbol, item.type);
     });
-    if (!symbolSet.size) return;
+    if (!symbolMap.size) return;
+    const tickers = [...symbolMap.entries()].map(([symbol, type]) => ({ symbol, type }));
     setPricesFetching(true);
     try {
       const r = await fetch('/api/prices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tickers: [...symbolSet] }),
+        body: JSON.stringify({ tickers }),
       });
       const d = await r.json();
       // Only overwrite stored prices when we actually received ≥1 price.
@@ -223,10 +225,8 @@ export default function Assets() {
         setPricesUpdatedAt(new Date(d.updatedAt));
       }
       // Always update the count display for feedback
-      if (d.requested != null) {
-        setPricesFetchedCount(d.fetched);
-        setPricesRequestedCount(d.requested);
-      }
+      setPricesFetchedCount(d.fetched ?? 0);
+      setPricesRequestedCount(d.requested ?? tickers.length);
     } catch (err) {
       console.error('fetchLatestPrices error:', err.message);
     } finally {
