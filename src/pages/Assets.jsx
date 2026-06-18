@@ -143,6 +143,13 @@ const HOLDING_TYPE_LABEL = {
   '国内債券': '国内債券', '外国債券': '外国債券', '金・プラチナ': '金・Pt',
 };
 
+const SKIP_PRICE_TYPES = new Set(['楽天・マネーファンド', '外貨建MMF', '外国債券', '国内債券', '金・プラチナ']);
+
+function formatTime(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function Assets() {
   const [assets, setAssets] = useState([]);
   const [portfolios, setPortfolios] = useState({});
@@ -164,6 +171,11 @@ export default function Assets() {
   const [expandedTypeKey, setExpandedTypeKey] = useState(null);
   const formRef = useRef(null);
 
+  const [latestPrices, setLatestPrices] = useState({});
+  const [pricesUpdatedAt, setPricesUpdatedAt] = useState(null);
+  const [pricesFetching, setPricesFetching] = useState(false);
+  const [priceViewMode, setPriceViewMode] = useState('csv');
+
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'assets'), (snap) => {
       setAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -181,11 +193,57 @@ export default function Assets() {
     return unsub;
   }, []);
 
-  const totalAssets = assets.reduce((s, a) => s + (a.amount || 0), 0);
+  const fetchLatestPrices = useCallback(async () => {
+    const allItems = Object.values(portfolios).flatMap((p) => p.items || []);
+    const symbolSet = new Set();
+    allItems.forEach((item) => {
+      if (!item.ticker || SKIP_PRICE_TYPES.has(item.type) || item.currentPrice <= 0) return;
+      symbolSet.add(item.type === '米国株式' ? item.ticker : `${item.ticker}.T`);
+    });
+    if (!symbolSet.size) return;
+    setPricesFetching(true);
+    try {
+      const r = await fetch('/api/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickers: [...symbolSet] }),
+      });
+      const d = await r.json();
+      if (d.prices) {
+        setLatestPrices(d.prices);
+        setPricesUpdatedAt(new Date(d.updatedAt));
+      }
+    } catch { /* ignore, keep showing CSV values */ } finally {
+      setPricesFetching(false);
+    }
+  }, [portfolios]);
+
+  useEffect(() => {
+    fetchLatestPrices();
+    const id = setInterval(fetchLatestPrices, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [fetchLatestPrices]);
+
+  const getLatestValue = useCallback((item) => {
+    if (!item.ticker || item.currentPrice <= 0 || SKIP_PRICE_TYPES.has(item.type)) return null;
+    const symbol = item.type === '米国株式' ? item.ticker : `${item.ticker}.T`;
+    const lp = latestPrices[symbol];
+    if (lp == null) return null;
+    return Math.round(item.currentValueJPY * (lp / item.currentPrice));
+  }, [latestPrices]);
+
+  const getAssetDisplayAmount = useCallback((asset) => {
+    if (priceViewMode !== 'latest' || asset.source !== 'rakuten') return asset.amount || 0;
+    const p = asset.portfolioId ? portfolios[asset.portfolioId] : null;
+    if (!p) return asset.amount || 0;
+    return (p.items || []).reduce((s, item) => s + (getLatestValue(item) ?? item.currentValueJPY), 0);
+  }, [priceViewMode, portfolios, getLatestValue]);
+
+  const totalAssets = assets.reduce((s, a) => s + getAssetDisplayAmount(a), 0);
 
   const byType = [
-    { type: 'bank', label: '銀行口座', color: 'bg-blue-100 text-blue-700', sum: assets.filter((a) => a.type === 'bank').reduce((s, a) => s + (a.amount || 0), 0) },
-    { type: 'securities', label: '証券口座', color: 'bg-purple-100 text-purple-700', sum: assets.filter((a) => a.type !== 'bank').reduce((s, a) => s + (a.amount || 0), 0) },
+    { type: 'bank', label: '銀行口座', color: 'bg-blue-100 text-blue-700', sum: assets.filter((a) => a.type === 'bank').reduce((s, a) => s + getAssetDisplayAmount(a), 0) },
+    { type: 'securities', label: '証券口座', color: 'bg-purple-100 text-purple-700', sum: assets.filter((a) => a.type !== 'bank').reduce((s, a) => s + getAssetDisplayAmount(a), 0) },
   ].filter((t) => t.sum > 0);
 
   const sortedAssets = assets.slice().sort((a, b) => {
@@ -546,6 +604,35 @@ export default function Assets() {
           <p className="text-sm">資産が登録されていません</p>
         </div>
       ) : (
+        <div>
+          {assets.some((a) => a.source === 'rakuten') && (
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs text-gray-400">
+                {priceViewMode === 'latest' && pricesUpdatedAt
+                  ? `最終更新 ${formatTime(pricesUpdatedAt)}`
+                  : 'CSVインポート時の評価額'}
+              </span>
+              <div className="flex items-center gap-2">
+                {pricesFetching && (
+                  <div className="w-3 h-3 border-2 border-gray-200 border-t-[#6b4aa0] rounded-full animate-spin" />
+                )}
+                <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                  <button
+                    onClick={() => setPriceViewMode('csv')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${priceViewMode === 'csv' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                  >
+                    CSV
+                  </button>
+                  <button
+                    onClick={() => setPriceViewMode('latest')}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${priceViewMode === 'latest' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                  >
+                    最新
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         <div className="space-y-2">
           {sortedAssets.map((asset, listIdx) => {
             const isRakuten = asset.source === 'rakuten';
@@ -609,7 +696,7 @@ export default function Assets() {
                   </div>
 
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <span className="text-base font-bold text-gray-800 mr-1">¥{formatJPY(asset.amount || 0)}</span>
+                    <span className="text-base font-bold text-gray-800 mr-1">¥{formatJPY(getAssetDisplayAmount(asset))}</span>
                     {isRakuten ? (
                       <>
                         <button
@@ -667,8 +754,12 @@ export default function Assets() {
                       <p className="text-xs text-gray-400 py-3 px-5">銘柄データがありません</p>
                     ) : (
                       holdingsByType.map(({ type, label, items }) => {
-                        const typeTotal = items.reduce((s, i) => s + i.currentValueJPY, 0);
-                        const typePnL = items.reduce((s, i) => s + i.unrealizedPnL, 0);
+                        const typeTotal = items.reduce((s, i) => s + (priceViewMode === 'latest' ? (getLatestValue(i) ?? i.currentValueJPY) : i.currentValueJPY), 0);
+                        const typePnL = items.reduce((s, i) => {
+                          if (priceViewMode !== 'latest') return s + i.unrealizedPnL;
+                          const lv = getLatestValue(i);
+                          return s + (lv != null ? lv - (i.currentValueJPY - i.unrealizedPnL) : i.unrealizedPnL);
+                        }, 0);
                         const typeKey = `${asset.portfolioId}::${type}`;
                         const isTypeExpanded = expandedTypeKey === typeKey;
 
@@ -698,7 +789,14 @@ export default function Assets() {
 
                             {isTypeExpanded && (
                               <div className="divide-y divide-black/5 bg-gray-50/50">
-                                {items.map((item, i) => (
+                                {items.map((item, i) => {
+                                  const lv = getLatestValue(item);
+                                  const displayValue = priceViewMode === 'latest' ? (lv ?? item.currentValueJPY) : item.currentValueJPY;
+                                  const costBasis = item.currentValueJPY - item.unrealizedPnL;
+                                  const displayPnL = priceViewMode === 'latest' && lv != null ? lv - costBasis : item.unrealizedPnL;
+                                  const displayPnLPct = priceViewMode === 'latest' && lv != null && costBasis > 0 ? (lv / costBasis - 1) * 100 : item.unrealizedPnLPct;
+                                  const isStale = priceViewMode === 'latest' && lv == null && !SKIP_PRICE_TYPES.has(item.type) && item.ticker;
+                                  return (
                                   <div key={i} className="px-5 py-3 flex items-center gap-3">
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -706,22 +804,26 @@ export default function Assets() {
                                         {item.ticker && (
                                           <span className="text-xs text-gray-400 font-mono flex-shrink-0">{item.ticker}</span>
                                         )}
+                                        {isStale && (
+                                          <span className="text-[10px] text-gray-300 flex-shrink-0">CSV</span>
+                                        )}
                                       </div>
                                       <p className="text-xs text-gray-400 mt-0.5">
                                         {item.account} · {new Intl.NumberFormat('ja-JP').format(item.quantity)}{item.unit}
                                       </p>
                                     </div>
                                     <div className="text-right flex-shrink-0">
-                                      <p className="text-sm font-bold text-gray-800">¥{formatJPY(item.currentValueJPY)}</p>
-                                      <p className={`text-xs font-medium ${item.unrealizedPnL >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
-                                        {item.unrealizedPnL >= 0 ? '+' : ''}¥{formatJPY(item.unrealizedPnL)}
+                                      <p className="text-sm font-bold text-gray-800">¥{formatJPY(displayValue)}</p>
+                                      <p className={`text-xs font-medium ${displayPnL >= 0 ? 'text-[#2d5f3f]' : 'text-[#b83232]'}`}>
+                                        {displayPnL >= 0 ? '+' : ''}¥{formatJPY(displayPnL)}
                                         <span className="text-gray-400 font-normal ml-1">
-                                          ({item.unrealizedPnLPct >= 0 ? '+' : ''}{item.unrealizedPnLPct.toFixed(2)}%)
+                                          ({displayPnLPct >= 0 ? '+' : ''}{displayPnLPct.toFixed(2)}%)
                                         </span>
                                       </p>
                                     </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -733,6 +835,7 @@ export default function Assets() {
               </div>
             );
           })}
+        </div>
         </div>
       )}
     </div>
